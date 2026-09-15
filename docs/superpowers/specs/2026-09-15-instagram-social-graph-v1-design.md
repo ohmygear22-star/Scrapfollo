@@ -1,6 +1,6 @@
 # Instagram Social Graph V1 Architecture Design
 
-**Status:** Awaiting final approval
+**Status:** Approved
 
 **Date:** 2026-09-15
 
@@ -319,18 +319,24 @@ Dataset writes are awaited per streamed item or bounded batch. If a Dataset writ
 request target scan
   → acquire PostgreSQL session-level per-target advisory lock on a dedicated connection
   → if unavailable, mark/return RUN_ALREADY_ACTIVE
-  → insert scrape_run = RUNNING
-  → consume core stream into transaction-scoped staging rows
-  → receive core completeness summaries
-  → if persistence failed: roll back observation; mark run FAILED
+  → create scrape_run = RUNNING
+  → consume core stream into a normal run-scoped staging table keyed by run_id
+  → commit staging writes incrementally while the advisory lock remains held
+  → do not hold the authoritative snapshot transaction during network collection
+  → receive final core completeness summaries
+  → open one short atomic PostgreSQL transaction
   → for each requested relationship type:
-      incomplete → retain data for diagnostics if configured,
-                   but do not commit authoritative snapshot edges or removals
-      complete   → upsert profiles and edges, create snapshot membership
-  → first complete observation for each relationship type: mark that type's baseline, create no relationship changes
-  → later comparable complete observation: create additions and removals
-  → commit snapshot/edges/changes atomically
-  → mark scrape_run COMPLETED or PARTIAL
+      incomplete → retain staging data for diagnostics and later cleanup,
+                   but do not promote authoritative snapshot edges or create removals
+      complete   → promote valid staging data into social_profiles,
+                   relationship_edges, snapshots, snapshot_edges,
+                   and relationship_changes
+  → for the first complete observation of each relationship type:
+      mark that type's baseline and create no relationship changes
+  → for a later comparable complete observation:
+      create additions and removals
+  → update scrape_run status in the same atomic transaction
+  → commit
   → release advisory lock
 ```
 
@@ -344,7 +350,7 @@ V1 uses a PostgreSQL session-level advisory lock keyed by target UUID:
 SELECT pg_try_advisory_lock(:target_lock_key);
 ```
 
-The adapter deterministically hashes the target UUID into the signed 64-bit advisory-lock key space. It acquires the lock on a dedicated pooled connection before collection begins and holds that connection for the scan. Network collection does not run inside a long-lived database transaction. After collection, snapshot/edge/change writes use a short atomic transaction while the same session-level lock remains held.
+The adapter deterministically hashes the target UUID into the signed 64-bit advisory-lock key space. It acquires the lock on a dedicated pooled connection before collection begins and holds that connection for the scan. Network collection does not run inside a long-lived database transaction. Streamed relationship rows are inserted into a normal staging table keyed by `run_id`; those staging writes may be committed incrementally while the advisory lock remains held. After final core completeness summaries arrive, promotion into authoritative profile, edge, snapshot, snapshot-membership, and change tables uses one short atomic transaction while the same session-level lock remains held.
 
 If the lock is unavailable, the adapter does not wait indefinitely and does not begin collection. It returns the normalized run outcome `RUN_ALREADY_ACTIVE`; depending on orchestration policy, the scheduler may skip or retry later. The rejected attempt may be recorded outside the authoritative snapshot transaction for operations auditing, but it cannot create a snapshot.
 
@@ -430,7 +436,27 @@ followers_is_baseline boolean not null default false
 following_is_baseline boolean not null default false
 ```
 
-### 9.5 `relationship_edges`
+### 9.5 `staging_relationships`
+
+```text
+run_id               uuid not null references scrape_runs(id)
+relationship_type    text not null check in ('FOLLOWER', 'FOLLOWING')
+dedupe_key            text not null
+source_platform_id    text not null
+related_platform_id   text
+username              text not null
+full_name             text
+is_private            boolean
+is_verified           boolean
+profile_pic_url       text
+position              bigint not null
+scraped_at            timestamptz not null
+primary key(run_id, relationship_type, dedupe_key)
+```
+
+V1 uses a normal table rather than a temporary session table. This permits incremental commits during streaming, crash recovery, inspection of failed or partial runs, and later retention cleanup of orphaned staging rows. Staging rows are run-scoped and are not authoritative history. A later persistence implementation must define retention and cleanup behavior before production use.
+
+### 9.6 `relationship_edges`
 
 ```text
 id                  uuid primary key
@@ -444,7 +470,7 @@ active              boolean not null
 
 Enforce uniqueness on `(target_id, related_profile_id, relationship_type)`.
 
-### 9.6 `snapshot_edges`
+### 9.7 `snapshot_edges`
 
 ```text
 snapshot_id          uuid not null references snapshots(id)
@@ -454,7 +480,7 @@ primary key(snapshot_id, relationship_edge_id)
 
 V1 intentionally retains this thin historical membership table. It duplicates neither profile fields nor provider raw data and allows exact historical reconstruction and auditable diffs. Membership rows are created only for the relationship types marked complete in that snapshot.
 
-### 9.7 `relationship_changes`
+### 9.8 `relationship_changes`
 
 ```text
 id                    uuid primary key
