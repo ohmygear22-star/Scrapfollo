@@ -4,10 +4,10 @@
   "packageManager": "pnpm@11.19.0",
   "engines": { "node": ">=22 <23" },
   "scripts": {
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
+    "build": "node \"$npm_execpath\" -r build",
+    "typecheck": "node \"$npm_execpath\" -r typecheck",
     "lint": "eslint . --max-warnings=0",
-    "test": "pnpm -r test",
+    "test": "node \"$npm_execpath\" -r test",
     "test:integration": "vitest run tests/integration"
   },
   "devDependencies": {
