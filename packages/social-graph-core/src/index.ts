@@ -30,3 +30,8 @@ export type {
   SocialGraphProviderCapabilities,
   SocialGraphProviderRegistry,
 } from "./contracts/provider.js";
+export { resolveProfile } from "./collection/resolve-profile.js";
+export { CollectionError } from "./errors/collection-error.js";
+export type { CollectionErrorOptions } from "./errors/collection-error.js";
+export { normalizeProviderError } from "./errors/normalize-error.js";
+export type { ErrorContext } from "./errors/normalize-error.js";
