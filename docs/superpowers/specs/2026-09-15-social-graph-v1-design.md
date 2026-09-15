@@ -1,6 +1,6 @@
 # Multi-Platform Social Graph V1 Architecture Design
 
-**Status:** Awaiting approval — multi-platform revision
+**Status:** Approved
 
 **Date:** 2026-09-15
 
