@@ -273,21 +273,24 @@ type RelationshipStreamEvent =
 
 function collectRelationships(
   request: CollectRelationshipsRequest,
+  sourceProfile: ProviderProfile,
   provider: SocialGraphProvider,
 ): AsyncGenerator<RelationshipStreamEvent>;
 ```
 
 Contract rules:
 
-1. Core yields each unique normalized relationship as soon as it is available.
-2. Exactly one terminal `summary` event is yielded for every relationship collection whose iterator is consumed to termination, including provider error and externally triggered abort outcomes. Core catches normalized collection errors so they become summaries instead of escaping as unclassified exceptions.
-3. No relationship event may occur after its terminal summary.
-4. If the consumer itself stops iteration early, it must call iterator `return()`; core aborts outstanding work and closes internal metrics as `ABORTED`. Because the consumer has closed the iterator, it cannot require a subsequently yielded summary; the consumer that initiated closure must record the abort in its own run status.
-5. Backpressure is native: core does not fetch the next page until the consumer has accepted yielded items from the current page. Apify can therefore await Dataset writes without unbounded buffering.
-6. Positions are one-based and contiguous over unique emitted rows. Duplicates do not consume positions.
-7. `scrapedAt` is the observation time assigned during normalization, not an inferred platform event time.
-8. Both-mode creates two independently summarized streams under the target result, so followers can complete while following fails.
-9. Multi-target orchestration may interleave events with a bounded concurrency limit, but every event carries `runId`, `targetId`, and relationship context either directly or through its value.
+1. A relationship collection begins only after `collectTarget` has successfully resolved a real `ProviderProfile`. `collectRelationships` consumes that resolved profile and never resolves or fabricates one itself.
+2. Core yields each unique normalized relationship as soon as it is available.
+3. Exactly one terminal `summary` event is yielded for every begun relationship collection whose iterator is consumed to termination, including page-fetch errors, exhausted retries, pagination failures, and externally triggered abort outcomes. Core catches normalized collection errors after collection begins so they become summaries instead of escaping as unclassified exceptions.
+4. Profile-resolution failure is a target-level failure before any relationship collection begins. It yields no profile, relationship, or collection-summary event, performs no relationship page request, and ends with one failed target summary carrying the normalized error. `sourceProfile` remains required on collection summaries and is never fabricated to represent a profile failure.
+5. No relationship event may occur after its terminal summary.
+6. If the consumer itself stops iteration early, it must call iterator `return()`; core aborts outstanding work and closes internal metrics as `ABORTED`. Because the consumer has closed the iterator, it cannot require a subsequently yielded summary; the consumer that initiated closure must record the abort in its own run status.
+7. Backpressure is native: core does not fetch the next page until the consumer has accepted yielded items from the current page. Apify can therefore await Dataset writes without unbounded buffering.
+8. Positions are one-based and contiguous over unique emitted rows. Duplicates do not consume positions.
+9. `scrapedAt` is the observation time assigned during normalization, not an inferred platform event time.
+10. Both-mode creates two independently summarized streams under the target result, so followers can complete while following fails.
+11. Multi-target orchestration may interleave events with a bounded concurrency limit, but every event carries `runId`, `targetId`, and relationship context either directly or through its value.
 
 The convenience batch orchestrator is also streaming:
 

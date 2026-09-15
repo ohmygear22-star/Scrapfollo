@@ -379,13 +379,14 @@ git commit -m "feat(core): orchestrate safe profile resolution"
 **Interfaces:**
 
 - Consumes: resolved `ProviderProfile`, `CollectRelationshipRequest`, `SocialGraphProvider`, and provider page DTOs.
-- Produces: `collectRelationships(request, provider): AsyncGenerator<RelationshipStreamEvent>`.
+- Produces: `collectRelationships(request, sourceProfile, provider): AsyncGenerator<RelationshipStreamEvent>`.
+- Lifecycle boundary: `sourceProfile` is a real profile already resolved by target orchestration. Profile resolution failure occurs before a relationship collection begins, so `collectRelationships` never resolves or fabricates a profile and never emits a collection summary for profile failure.
 
 - [ ] **Step 1: Write a failing lazy-stream test**
 
 ```ts
 it("does not request data until the consumer pulls and yields rows before summary", async () => {
-  const stream = collectRelationships(request, provider);
+  const stream = collectRelationships(request, sourceProfile, provider);
   expect(provider.pageCalls).toBe(0);
   const first = await stream.next();
   expect(provider.pageCalls).toBe(1);
@@ -404,6 +405,7 @@ it.each([
   const unsupportedProvider = providerWith({ [capability]: false });
   const events = await consume(collectRelationships(
     { ...request, relationship },
+    sourceProfile,
     unsupportedProvider,
   ));
   expect(events.at(-1)).toMatchObject({
@@ -422,7 +424,7 @@ Expected: FAIL because the AsyncGenerator and normalizer do not exist.
 
 - [ ] **Step 3: Implement one-page streaming only**
 
-On first pull, validate the matching identity capability before any page call. Fetch one page, require every provider item platform to equal `provider.platform`, normalize and yield each item individually with `platform`, then yield exactly one `SOURCE_EXHAUSTED` summary when `hasMore` is false. Copy allow-listed fields; never spread a provider item into output. Assign one-based positions and an injected observation clock.
+Accept the already-resolved `sourceProfile`; do not call profile resolution internally. On first pull, validate the matching identity capability before any page call. Fetch one page, require every provider item platform to equal `provider.platform`, normalize and yield each item individually with `platform`, then yield exactly one `SOURCE_EXHAUSTED` summary when `hasMore` is false. A page-fetch failure after collection begins yields exactly one normalized `ERROR` summary containing the real `sourceProfile`. Until Task 5 installs the pagination loop, `hasMore: true` is guarded as exactly one `PAGINATION_FAILED` summary without a second request; Task 5 replaces this interim guard with opaque cursor continuation. Copy allow-listed fields; never spread a provider item into output. Assign one-based positions and an injected observation clock.
 
 - [ ] **Step 4: Verify backpressure and output shape**
 
@@ -924,7 +926,7 @@ Expected: `collectTarget` is absent or following failure terminates the full tar
 
 - [ ] **Step 3: Implement sequential per-target relationship orchestration**
 
-Require the target platform to match the injected provider and resolve the profile once. For `both`, run followers then following as independent relationship streams and forward their platform-bearing events with target context. Sequential execution is the V1 minimum and naturally bounds memory. Derive `SUCCESS`, `PARTIAL`, or `FAILED` only from requested collection summaries.
+Validate the target platform against the injected provider, then resolve the profile exactly once. If profile resolution fails, emit exactly one `FAILED` target summary carrying the normalized error; emit no profile, relationship, or collection-summary event and make no relationship page request. After successful resolution, emit the real profile event, pass that resolved profile into each selected relationship stream, and forward their platform-bearing events with target context. For `both`, run followers then following as independent relationship streams. Sequential execution is the V1 minimum and naturally bounds memory. Derive `SUCCESS`, `PARTIAL`, or `FAILED` from the requested collection summaries only after profile resolution succeeds.
 
 - [ ] **Step 4: Verify all modes**
 
@@ -939,7 +941,7 @@ git add packages/social-graph-core/src packages/social-graph-core/tests/collect-
 git commit -m "feat(core): collect both relationship types independently"
 ```
 
-**Completion criteria:** Profile resolves once through the matching platform provider, selected modes are respected, and both-mode always exposes separate platform-bearing authoritative summaries.
+**Completion criteria:** Platform/provider identity is validated before profile lookup; profile resolves exactly once through the matching provider; a profile failure produces only one failed target summary and no page calls; selected modes are respected; and, after profile success, both-mode exposes separate platform-bearing authoritative summaries.
 
 ---
 

@@ -31,6 +31,10 @@ export type {
   SocialGraphProviderRegistry,
 } from "./contracts/provider.js";
 export { resolveProfile } from "./collection/resolve-profile.js";
+export { collectRelationships } from "./collection/collect-relationships.js";
+export type { CollectRelationshipsOptions } from "./collection/collect-relationships.js";
+export { normalizeRelationship } from "./normalization/normalize-relationship.js";
+export type { NormalizeRelationshipInput } from "./normalization/normalize-relationship.js";
 export { CollectionError } from "./errors/collection-error.js";
 export type { CollectionErrorOptions } from "./errors/collection-error.js";
 export { normalizeProviderError } from "./errors/normalize-error.js";
