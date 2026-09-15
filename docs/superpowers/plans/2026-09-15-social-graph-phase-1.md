@@ -82,7 +82,7 @@ docs/providers/social-graph-provider.md           provider authoring contract
 - Consumes: Node 22 built-in `AbortSignal`; no runtime dependencies.
 - Produces: `Platform`, `SocialGraphProviderCapabilities`, `SocialGraphProvider`, `SocialGraphProviderRegistry`, `ProviderProfile`, `ProviderRelationshipItem`, `ProviderRelationshipPage`, `CollectRelationshipRequest`, `CollectTargetsRequest`, `NormalizedRelationship`, `CollectionCompleteness`, `RelationshipCollectionSummary`, `RelationshipStreamEvent`, `TargetStreamEvent`, `PublicCollectionError`, `RelationshipCollectionMetrics`, and `CoreRunMetrics`.
 
-- [ ] **Step 1: Create only workspace test tooling and the failing contract test**
+- [ ] **Step 1: Create only workspace test tooling and the contract test**
 
 Create the manifests/configuration, then write this compile-time/runtime test before any core contract implementation. The root manifest must be private and contain exactly these workspace commands and tool versions:
 
@@ -113,7 +113,7 @@ Create the manifests/configuration, then write this compile-time/runtime test be
 
 `pnpm-workspace.yaml` includes `packages/*` and `providers/*`. `tsconfig.base.json` sets `target: "ES2022"`, `module` and `moduleResolution` to `"NodeNext"`, `strict: true`, `exactOptionalPropertyTypes: true`, `noUncheckedIndexedAccess: true`, `verbatimModuleSyntax: true`, and `skipLibCheck: true`. The core package is ESM, private during Phase 1, and has scripts `tsc -p tsconfig.json`, `tsc -p tsconfig.json --noEmit`, and `vitest run` for build, typecheck, and test.
 
-Then add the failing test:
+Then add the contract test:
 
 ```ts
 import { describe, expect, expectTypeOf, it } from "vitest";
@@ -151,11 +151,14 @@ describe("public contracts", () => {
 });
 ```
 
-- [ ] **Step 2: Verify the test fails for the intended reason**
+- [ ] **Step 2: Verify the authoritative RED failure**
 
-Run: `pnpm install && pnpm --filter @social-graph/core test -- contracts.test.ts`
+Run a strict TypeScript compile of `packages/social-graph-core/tests/contracts.test.ts`
+before any core contract implementation.
 
-Expected: FAIL because `../src/index.js` and its exported contracts do not exist; dependency installation itself must succeed.
+Expected: FAIL with TS2307 because `../src/index.js` and its exported contracts
+do not exist. Vitest transpiles and erases the test's type-only import, so its
+runtime execution is not a reliable RED check for this compile-time contract.
 
 - [ ] **Step 3: Add the minimal contract definitions and explicit exports**
 
