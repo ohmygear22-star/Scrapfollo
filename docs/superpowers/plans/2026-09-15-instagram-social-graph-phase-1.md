@@ -19,10 +19,11 @@
 - Production collection APIs are `AsyncGenerator`/`AsyncIterable` APIs with backpressure; no full follower/following result list may be accumulated in memory.
 - Exact run-scoped deduplication may retain only dedupe keys and counters in memory.
 - Every fully consumed relationship stream ends with one authoritative completeness summary.
-- `MAX_LIMIT_REACHED` is incomplete but is not an error.
+- `MAX_LIMIT_REACHED` is incomplete but is not an error. Reaching the numeric maximum still yields `SOURCE_EXHAUSTED` when the already-fetched terminal page proves that no unique source relationship was omitted.
 - Followers and following are summarized independently.
 - One target failure must not unnecessarily terminate other targets.
 - `FakeProvider` and every future provider run through the same provider contract test factory.
+- Core request counters come only from retry-orchestration hooks: one `requestsMade` per actual core-to-provider invocation, one `requestsFailed` per failed invocation, and one `requestsRetried` per invocation after the first attempt. `ProviderRelationshipPage.requestMetadata.attempts` is diagnostic provider metadata and must never be added to core request counters.
 - Follow strict TDD for behavior: write one focused test, run it and observe the expected failure, add the minimal implementation, then verify the focused and workspace test suites.
 - Do not start the next task until the current task's completion criteria are satisfied and its commit is created.
 
@@ -158,6 +159,8 @@ export type RelationshipStreamEvent =
   | { type: "relationship"; value: NormalizedRelationship }
   | { type: "summary"; value: RelationshipCollectionSummary };
 ```
+
+On `ProviderRelationshipPage.requestMetadata.attempts`, add this contract documentation: `Provider diagnostic metadata only; never added to authoritative core requestsMade, requestsFailed, or requestsRetried counters.`
 
 Use `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, declaration output, ESM, and explicit `.js` import suffixes. Root scripts are `build`, `test`, `typecheck`, and `lint`, each delegated recursively through pnpm.
 
@@ -492,7 +495,7 @@ git commit -m "feat(core): deduplicate streamed relationships exactly"
 
 ### Task 7: Exact maximum-result termination
 
-**Goal:** Stop at the requested number of unique emitted rows and report a non-error incomplete observation.
+**Goal:** Emit no more than the requested number of unique rows while distinguishing proven source exhaustion from a true truncating maximum.
 
 **Files:**
 
@@ -503,19 +506,63 @@ git commit -m "feat(core): deduplicate streamed relationships exactly"
 **Interfaces:**
 
 - Consumes: `CollectRelationshipRequest.maxResults?: number`.
-- Produces: exact truncation and `{ complete: false, terminationReason: "MAX_LIMIT_REACHED" }`.
+- Produces: exact output limits, `SOURCE_EXHAUSTED` when the already-fetched terminal page proves no unique row was omitted, and non-error `MAX_LIMIT_REACHED` only when source relationships remain unobserved or un-emitted.
 
 - [ ] **Step 1: Write failing boundary tests**
 
 ```ts
-it("stops on the third unique row without fetching another page", async () => {
-  const events = await consume(collectRelationships({ ...request, maxResults: 3 }, provider));
+it("A: reports MAX_LIMIT_REACHED when the source has more results than max", async () => {
+  const provider = providerWithPages([
+    page([row("u1"), row("u2"), row("u3")], { hasMore: true, nextCursor: "opaque-next" }),
+    terminalPage([row("u4")]),
+  ]);
+  const events = await consume(collectRelationships(
+    { ...request, maxResults: 3 },
+    provider,
+  ));
   expect(relationships(events)).toHaveLength(3);
   expect(provider.pageCalls).toBe(1);
-  expect(events.at(-1)).toMatchObject({
-    value: { completeness: { complete: false, terminationReason: "MAX_LIMIT_REACHED" } },
+  expect(completeness(events)).toEqual({
+    complete: false,
+    terminationReason: "MAX_LIMIT_REACHED",
   });
-  expect(events.at(-1)).not.toHaveProperty("value.completeness.error");
+});
+
+it("B: reports SOURCE_EXHAUSTED when a terminal page contains exactly max unique rows", async () => {
+  const events = await consume(collectRelationships(
+    { ...request, maxResults: 3 },
+    providerWithPages([terminalPage([row("u1"), row("u2"), row("u3")])]),
+  ));
+  expect(relationships(events)).toHaveLength(3);
+  expect(completeness(events)).toEqual({
+    complete: true,
+    terminationReason: "SOURCE_EXHAUSTED",
+  });
+});
+
+it("C: reports MAX_LIMIT_REACHED when a terminal page has a later unique row", async () => {
+  const events = await consume(collectRelationships(
+    { ...request, maxResults: 3 },
+    providerWithPages([terminalPage([
+      row("u1"), row("u2"), row("u3"), row("u4"),
+    ])]),
+  ));
+  expect(relationships(events).map((row) => row.userId)).toEqual(["u1", "u2", "u3"]);
+  expect(completeness(events).terminationReason).toBe("MAX_LIMIT_REACHED");
+});
+
+it("D: reports SOURCE_EXHAUSTED when terminal-page remainder contains only duplicates", async () => {
+  const events = await consume(collectRelationships(
+    { ...request, maxResults: 3 },
+    providerWithPages([terminalPage([
+      row("u1"), row("u2"), row("u3"), row("u2"), row("u1"),
+    ])]),
+  ));
+  expect(relationships(events)).toHaveLength(3);
+  expect(completeness(events)).toEqual({
+    complete: true,
+    terminationReason: "SOURCE_EXHAUSTED",
+  });
 });
 ```
 
@@ -523,17 +570,24 @@ it("stops on the third unique row without fetching another page", async () => {
 
 Run: `pnpm --filter @instagram-social-graph/core test -- max-results.test.ts`
 
-Expected: too many rows are emitted, another page is fetched, or source exhaustion is reported incorrectly.
+Expected: at least one of cases A-D reports the wrong terminal reason, emits too many rows, or fetches another page after a true max boundary.
 
 - [ ] **Step 3: Implement the unique-row boundary**
 
-Validate `maxResults` as a positive safe integer at the public boundary. Test the limit after deduplication and after each emitted unique row. Stop immediately at the limit and emit the non-error incomplete summary.
+Validate `maxResults` as a positive safe integer at the public boundary. Count only unique emitted rows. When the max-th row is emitted:
+
+1. If the current page has `hasMore: true`, stop without another network request and report `MAX_LIMIT_REACHED`.
+2. If the current page is terminal, inspect only its already-fetched remaining items through the same dedupe-key logic without emitting them.
+3. If any remaining item has a new dedupe key, report `MAX_LIMIT_REACHED`.
+4. If the remainder is empty or contains only duplicate keys, report `SOURCE_EXHAUSTED`.
+
+Never fetch another page solely to decide completeness after reaching the maximum. Do not add inspected-but-unemitted unique rows to the accepted dedupe set or unique-output metrics; raw-item accounting still reflects every item received in the already-fetched page.
 
 - [ ] **Step 4: Verify**
 
 Run: `pnpm --filter @instagram-social-graph/core test -- max-results.test.ts && pnpm test`
 
-Expected: exact limits pass at page middle, page boundary, and duplicate overlap.
+Expected: cases A-D pass, no more than `maxResults` rows are emitted, and no network page is fetched after a true maximum boundary.
 
 - [ ] **Step 5: Commit**
 
@@ -542,7 +596,7 @@ git add packages/instagram-core/src packages/instagram-core/tests/max-results.te
 git commit -m "feat(core): enforce exact relationship limits"
 ```
 
-**Completion criteria:** Limits count unique emitted rows, avoid unnecessary requests, and never classify `MAX_LIMIT_REACHED` as an error or complete collection.
+**Completion criteria:** Limits count unique emitted rows; source exhaustion wins only when the already-fetched terminal page proves no unique omission; true truncation is non-error incomplete; and no extra network page is fetched to determine completeness.
 
 ---
 
@@ -822,6 +876,14 @@ it("never buffers more than the configured event capacity", async () => {
   await pullSlowly(stream);
   expect(provider.maxUnconsumedRows).toBeLessThanOrEqual(2);
 });
+
+it("aborts producers without requiring summaries when the consumer closes early", async () => {
+  const stream = collectTargets(request, blockingProvider);
+  await stream.next();
+  await stream.return(undefined);
+  expect(blockingProvider.activeTargetCount).toBe(0);
+  expect(blockingProvider.pendingOperationCount).toBe(0);
+});
 ```
 
 - [ ] **Step 2: Verify failure**
@@ -832,13 +894,15 @@ Expected: batch orchestration is absent, a failure escapes globally, or producer
 
 - [ ] **Step 3: Implement bounded scheduling**
 
-Validate unique non-empty targets and positive concurrency. Use at most `concurrency` active target iterators and a queue capped by `eventBufferSize`; producers await capacity. Catch target-level normalized failures, emit a failed target summary, and continue remaining targets. On consumer close, abort all active iterators.
+Validate unique non-empty targets and positive concurrency. Use at most `concurrency` active target iterators and a queue capped by `eventBufferSize`; producers await capacity. Catch target-level normalized failures, emit a failed target summary, and continue remaining targets. Every target receives one terminal target summary when the batch iterator is consumed normally to completion.
+
+If the consumer closes the batch iterator early with `return()`, abort all active target iterators, wake and clean up blocked queue producers, remove signal listeners, and settle internal producer promises. Do not attempt to yield subsequent target summaries. The consumer that initiated closure owns recording the aborted outer-run state.
 
 - [ ] **Step 4: Verify**
 
 Run: `pnpm --filter @instagram-social-graph/core test -- collect-targets.test.ts && pnpm test`
 
-Expected: concurrency cap, buffer cap, failure isolation, event context, and cancellation all pass.
+Expected: concurrency cap, buffer cap, failure isolation, event context, normal-completion summaries, and early-closure cleanup all pass.
 
 - [ ] **Step 5: Commit**
 
@@ -847,7 +911,7 @@ git add packages/instagram-core/src packages/instagram-core/tests/collect-target
 git commit -m "feat(core): stream targets with bounded concurrency"
 ```
 
-**Completion criteria:** Multi-target work is bounded and backpressured, every target is summarized, and one target failure does not unnecessarily terminate peers.
+**Completion criteria:** Multi-target work is bounded and backpressured; every target is summarized when normal batch consumption completes; early consumer closure aborts and cleans all producers without requiring later summaries; and one target failure does not unnecessarily terminate peers.
 
 ---
 
@@ -867,7 +931,7 @@ git commit -m "feat(core): stream targets with bounded concurrency"
 
 **Interfaces:**
 
-- Consumes: injected monotonic clock, provider request metadata, retry hooks, dedupe decisions, and terminal summaries.
+- Consumes: injected monotonic clock, retry-orchestration hooks, provider byte/duration metadata, dedupe decisions, and terminal summaries. `ProviderRelationshipPage.requestMetadata.attempts` remains diagnostic only.
 - Produces: immutable `RelationshipCollectionMetrics`, `CoreRunMetrics`, and `derivePerThousand(metrics)`.
 
 - [ ] **Step 1: Write failing accounting tests**
@@ -883,6 +947,15 @@ it("counts raw, unique, duplicate, failed, and retried work", async () => {
     requestsFailed: 1,
     requestsRetried: 1,
     bytesTransferred: 600,
+  });
+});
+
+it("does not add provider diagnostic attempts to core request counters", async () => {
+  const summary = await finalSummary(streamWhoseSingleSuccessfulPageReports({ attempts: 7 }));
+  expect(summary.metrics).toMatchObject({
+    requestsMade: 1,
+    requestsFailed: 0,
+    requestsRetried: 0,
   });
 });
 
@@ -902,13 +975,21 @@ Expected: counters are zero/incomplete or derived functions do not exist.
 
 - [ ] **Step 3: Implement event-point accounting**
 
-Increment requests for every actual provider attempt, failures for failed attempts, retries only for attempts after the first, raw items on page receipt, unique/duplicates at dedupe, and returned counts on yield. Sum measurable bytes only; represent unavailable bytes separately rather than as zero. Use injected monotonic time for runtime.
+Use retry orchestration hooks as the only source of truth for core request counters:
+
+- increment `requestsMade` once for every actual core-to-provider operation invocation;
+- increment `requestsFailed` once when that invocation throws or returns a failed attempt;
+- increment `requestsRetried` once for every invocation after the first attempt of the same logical operation.
+
+Do not add `ProviderRelationshipPage.requestMetadata.attempts` to any of these counters. That field is provider diagnostic metadata only and may describe provider-internal work that core did not invoke. Future hidden subrequest metrics require a separate contract and are outside Phase 1.
+
+Increment raw items on page receipt, unique/duplicates at dedupe, and returned counts on yield. Sum measurable bytes only; represent unavailable bytes separately rather than as zero. Use injected monotonic time for runtime.
 
 - [ ] **Step 4: Verify**
 
 Run: `pnpm --filter @instagram-social-graph/core test -- metrics.test.ts && pnpm test`
 
-Expected: exact counts pass for success and partial paths; zero-result derived values are null.
+Expected: exact counts pass for success, retry, and partial paths; diagnostic `attempts: 7` still counts as one successful core invocation; zero-result derived values are null.
 
 - [ ] **Step 5: Commit**
 
@@ -917,7 +998,7 @@ git add packages/instagram-core/src packages/instagram-core/tests/metrics.test.t
 git commit -m "feat(core): measure collection activity"
 ```
 
-**Completion criteria:** Metrics describe only observed work, survive incomplete collections, and include no invented Apify compute, proxy, or cost values.
+**Completion criteria:** Metrics describe only observed work, retry hooks are the sole authoritative source for core invocation counters, provider diagnostic attempts cannot double-count requests, incomplete collections retain metrics, and no Apify compute, proxy, or cost values are invented.
 
 ---
 
