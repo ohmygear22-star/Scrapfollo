@@ -1,20 +1,21 @@
-# Instagram Social Graph Phase 1 Implementation Plan
+# Social Graph Phase 1 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build and fully test a provider-neutral, streaming Instagram relationship collection core and deterministic `FakeProvider`, without connecting to Instagram or any production consumer.
+**Goal:** Build and fully test a provider-neutral, streaming Social Graph relationship core for Instagram, X, and TikTok using one configurable deterministic `FakeProvider`, without connecting to any live platform or production consumer.
 
-**Architecture:** A TypeScript pnpm workspace contains `@instagram-social-graph/core` and `@instagram-social-graph/fake-provider`. Core owns consumer-neutral contracts, orchestration, streaming, pagination, normalization, exact run-scoped deduplication, retry, cancellation, completeness, and metrics; the fake provider implements the same `InstagramProvider` interface and contract suite required of future providers.
+**Architecture:** A TypeScript pnpm workspace contains `@social-graph/core` and `@social-graph/fake-provider`. Core owns consumer-neutral contracts, orchestration, streaming, pagination, normalization, exact run-scoped deduplication, retry, cancellation, completeness, and metrics; the fake provider implements the same `SocialGraphProvider` interface and contract suite required of future providers.
 
 **Tech Stack:** Node.js 22, pnpm 11.19.0, TypeScript 5.9.3, Vitest 3.2.4, ESLint 9.35.0, `@typescript-eslint` 8.42.0.
 
-**Spec:** `docs/superpowers/specs/2026-09-15-instagram-social-graph-v1-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-15-social-graph-v1-design.md`
 
 ## Global Constraints
 
 - Phase 1 includes only the provider-neutral core, deterministic fake provider, tests, and provider-development documentation.
-- Do not add a real Instagram provider, Instagram login/session automation, Apify deployment, Store publication, pricing, PostgreSQL deployment, DigitalOcean changes, Starpulse persistence, scheduler, notifications, billing, UI/dashboard, private-profile access, or control-bypass behavior.
-- `packages/instagram-core` must not import Apify SDK, PostgreSQL libraries, Starpulse code, or a provider implementation.
+- Supported Phase 1 platform identities are exactly `instagram`, `x`, and `tiktok`; YouTube is excluded.
+- Do not add a live Instagram, X, TikTok, or YouTube provider; account/session automation; Apify deployment; Store publication; pricing; PostgreSQL deployment; DigitalOcean changes; Starpulse persistence; scheduler; notifications; billing; UI/dashboard; private-profile access; or control-bypass behavior.
+- `packages/social-graph-core` must not import Apify SDK, PostgreSQL libraries, Starpulse code, or a provider implementation.
 - Consumers depend only on core contracts; provider cursors remain opaque and provider raw responses never appear in normalized output.
 - Production collection APIs are `AsyncGenerator`/`AsyncIterable` APIs with backpressure; no full follower/following result list may be accumulated in memory.
 - Exact run-scoped deduplication may retain only dedupe keys and counters in memory.
@@ -23,6 +24,8 @@
 - Followers and following are summarized independently.
 - One target failure must not unnecessarily terminate other targets.
 - `FakeProvider` and every future provider run through the same provider contract test factory.
+- Provider capabilities are authoritative declarations. Core and consumers must not infer capabilities from platform/provider names or method presence.
+- Multi-target orchestration selects injected providers through `SocialGraphProviderRegistry`; a missing platform provider fails only that target with `PROVIDER_UNAVAILABLE`.
 - Core request counters come only from retry-orchestration hooks: one `requestsMade` per actual core-to-provider invocation, one `requestsFailed` per failed invocation, and one `requestsRetried` per invocation after the first attempt. `ProviderRelationshipPage.requestMetadata.attempts` is diagnostic provider metadata and must never be added to core request counters.
 - Follow strict TDD for behavior: write one focused test, run it and observe the expected failure, add the minimal implementation, then verify the focused and workspace test suites.
 - Do not start the next task until the current task's completion criteria are satisfied and its commit is created.
@@ -34,23 +37,23 @@ package.json                                  workspace scripts only
 pnpm-workspace.yaml                           workspace package discovery
 tsconfig.base.json                            shared strict TypeScript settings
 eslint.config.mjs                             dependency-boundary and lint rules
-packages/instagram-core/package.json          core package manifest
-packages/instagram-core/tsconfig.json         core build configuration
-packages/instagram-core/src/contracts/*       consumer-neutral public types
-packages/instagram-core/src/errors/*          normalized errors and classification
-packages/instagram-core/src/normalization/*   raw-item-to-domain mapping only
-packages/instagram-core/src/deduplication/*   exact key set only
-packages/instagram-core/src/retry/*           bounded retry and abortable delay
-packages/instagram-core/src/metrics/*         counters and derived metrics
-packages/instagram-core/src/collection/*      profile, relationship, and target streams
-packages/instagram-core/src/index.ts          explicit public exports
-packages/instagram-core/tests/*               core behavior and architecture tests
+packages/social-graph-core/package.json          core package manifest
+packages/social-graph-core/tsconfig.json         core build configuration
+packages/social-graph-core/src/contracts/*       consumer-neutral public types
+packages/social-graph-core/src/errors/*          normalized errors and classification
+packages/social-graph-core/src/normalization/*   raw-item-to-domain mapping only
+packages/social-graph-core/src/deduplication/*   exact key set only
+packages/social-graph-core/src/retry/*           bounded retry and abortable delay
+packages/social-graph-core/src/metrics/*         counters and derived metrics
+packages/social-graph-core/src/collection/*      profile, relationship, and target streams
+packages/social-graph-core/src/index.ts          explicit public exports
+packages/social-graph-core/tests/*               core behavior and architecture tests
 providers/fake-provider/package.json          fake provider manifest
 providers/fake-provider/src/*                 deterministic scenario implementation
 providers/fake-provider/tests/*               shared contract and integration tests
 tests/contracts/provider-contract.ts          reusable provider contract suite
 tests/integration/fake-provider-flow.test.ts   full Phase 1 stream test
-docs/providers/instagram-provider.md           provider authoring contract
+docs/providers/social-graph-provider.md           provider authoring contract
 ```
 
 ---
@@ -65,19 +68,19 @@ docs/providers/instagram-provider.md           provider authoring contract
 - Create: `pnpm-workspace.yaml`
 - Create: `tsconfig.base.json`
 - Create: `eslint.config.mjs`
-- Create: `packages/instagram-core/package.json`
-- Create: `packages/instagram-core/tsconfig.json`
-- Create: `packages/instagram-core/src/contracts/provider.ts`
-- Create: `packages/instagram-core/src/contracts/collection.ts`
-- Create: `packages/instagram-core/src/contracts/errors.ts`
-- Create: `packages/instagram-core/src/contracts/metrics.ts`
-- Create: `packages/instagram-core/src/index.ts`
-- Test: `packages/instagram-core/tests/contracts.test.ts`
+- Create: `packages/social-graph-core/package.json`
+- Create: `packages/social-graph-core/tsconfig.json`
+- Create: `packages/social-graph-core/src/contracts/provider.ts`
+- Create: `packages/social-graph-core/src/contracts/collection.ts`
+- Create: `packages/social-graph-core/src/contracts/errors.ts`
+- Create: `packages/social-graph-core/src/contracts/metrics.ts`
+- Create: `packages/social-graph-core/src/index.ts`
+- Test: `packages/social-graph-core/tests/contracts.test.ts`
 
 **Interfaces:**
 
 - Consumes: Node 22 built-in `AbortSignal`; no runtime dependencies.
-- Produces: `InstagramProvider`, `ProviderProfile`, `ProviderRelationshipItem`, `ProviderRelationshipPage`, `CollectRelationshipRequest`, `CollectTargetsRequest`, `NormalizedRelationship`, `CollectionCompleteness`, `RelationshipCollectionSummary`, `RelationshipStreamEvent`, `TargetStreamEvent`, `PublicCollectionError`, `RelationshipCollectionMetrics`, and `CoreRunMetrics`.
+- Produces: `Platform`, `SocialGraphProviderCapabilities`, `SocialGraphProvider`, `SocialGraphProviderRegistry`, `ProviderProfile`, `ProviderRelationshipItem`, `ProviderRelationshipPage`, `CollectRelationshipRequest`, `CollectTargetsRequest`, `NormalizedRelationship`, `CollectionCompleteness`, `RelationshipCollectionSummary`, `RelationshipStreamEvent`, `TargetStreamEvent`, `PublicCollectionError`, `RelationshipCollectionMetrics`, and `CoreRunMetrics`.
 
 - [ ] **Step 1: Create only workspace test tooling and the failing contract test**
 
@@ -85,7 +88,7 @@ Create the manifests/configuration, then write this compile-time/runtime test be
 
 ```json
 {
-  "name": "instagram-social-graph",
+  "name": "social-graph",
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "engines": { "node": ">=22 <23" },
@@ -116,13 +119,25 @@ Then add the failing test:
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type {
   CollectionCompleteness,
-  InstagramProvider,
+  Platform,
+  SocialGraphProviderCapabilities,
+  SocialGraphProvider,
   RelationshipStreamEvent,
 } from "../src/index.js";
 
 describe("public contracts", () => {
   it("exposes provider and authoritative stream contracts", () => {
-    expectTypeOf<InstagramProvider>().toBeObject();
+    expectTypeOf<SocialGraphProvider>().toBeObject();
+    expectTypeOf<Platform>().toEqualTypeOf<"instagram" | "x" | "tiktok">();
+    expectTypeOf<SocialGraphProviderCapabilities>().toMatchTypeOf<{
+      profileLookup: boolean;
+      followerCount: boolean;
+      followingCount: boolean;
+      followerIdentities: boolean;
+      followingIdentities: boolean;
+      pagination: boolean;
+      stableUserIds: boolean;
+    }>();
     expectTypeOf<RelationshipStreamEvent>().toMatchTypeOf<
       | { type: "relationship"; value: unknown }
       | { type: "summary"; value: unknown }
@@ -138,7 +153,7 @@ describe("public contracts", () => {
 
 - [ ] **Step 2: Verify the test fails for the intended reason**
 
-Run: `pnpm install && pnpm --filter @instagram-social-graph/core test -- contracts.test.ts`
+Run: `pnpm install && pnpm --filter @social-graph/core test -- contracts.test.ts`
 
 Expected: FAIL because `../src/index.js` and its exported contracts do not exist; dependency installation itself must succeed.
 
@@ -148,6 +163,7 @@ Define the exact provider page contract from the spec, plus these discriminated 
 
 ```ts
 export type RelationshipType = "followers" | "following";
+export type Platform = "instagram" | "x" | "tiktok";
 export type ScrapeType = RelationshipType | "both";
 export type TerminationReason =
   | "SOURCE_EXHAUSTED"
@@ -158,7 +174,11 @@ export type TerminationReason =
 export type RelationshipStreamEvent =
   | { type: "relationship"; value: NormalizedRelationship }
   | { type: "summary"; value: RelationshipCollectionSummary };
+
+export type SocialGraphProviderRegistry = ReadonlyMap<Platform, SocialGraphProvider>;
 ```
+
+Define all seven required capability booleans. Add `readonly platform: Platform` and `readonly capabilities: SocialGraphProviderCapabilities` to `SocialGraphProvider`. Add `platform: Platform` to resolve input, provider profile, provider relationship item, normalized relationship, and target requests/summaries. Add `CAPABILITY_UNSUPPORTED` and `PROVIDER_UNAVAILABLE` to the public error-category union. Do not include `youtube` in any platform type.
 
 On `ProviderRelationshipPage.requestMetadata.attempts`, add this contract documentation: `Provider diagnostic metadata only; never added to authoritative core requestsMade, requestsFailed, or requestsRetried counters.`
 
@@ -166,24 +186,24 @@ Use `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, declaration output
 
 - [ ] **Step 4: Verify contracts and workspace configuration**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- contracts.test.ts && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @social-graph/core test -- contracts.test.ts && pnpm typecheck && pnpm lint`
 
 Expected: contract test passes; typecheck and lint exit 0 without warnings.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json eslint.config.mjs packages/instagram-core
+git add package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json eslint.config.mjs packages/social-graph-core
 git commit -m "feat(core): define provider-neutral contracts"
 ```
 
-**Completion criteria:** The workspace installs reproducibly, strict typecheck passes, and the core public entry point exports only consumer-neutral contracts with no Apify, PostgreSQL, Starpulse, or provider implementation imports.
+**Completion criteria:** The workspace installs reproducibly, strict typecheck passes, all public relationship contracts carry platform identity, capabilities and the provider registry are explicit, and the core entry point exports only consumer-neutral contracts with no Apify, PostgreSQL, Starpulse, or provider implementation imports.
 
 ---
 
 ### Task 2: Reusable provider contract suite and deterministic FakeProvider shell
 
-**Goal:** Make provider conformance executable once and reusable unchanged by the fake provider and all future live providers.
+**Goal:** Make multi-platform provider conformance executable once and reusable unchanged by configurable fake Instagram, X, and TikTok instances and all future live providers.
 
 **Files:**
 
@@ -197,43 +217,62 @@ git commit -m "feat(core): define provider-neutral contracts"
 
 **Interfaces:**
 
-- Consumes: `InstagramProvider` and provider DTOs from `@instagram-social-graph/core`.
-- Produces: `defineInstagramProviderContract(createProvider)` and `FakeProvider.fromScenario(scenario)`.
+- Consumes: `SocialGraphProvider` and provider DTOs from `@social-graph/core`.
+- Produces: `defineSocialGraphProviderContract({ platform, createProvider })` and `FakeProvider.fromScenario(scenario)` where every scenario has one explicit platform and capability set.
 
 - [ ] **Step 1: Write the shared contract test factory and fake-provider invocation first**
 
-The factory must assert public profile resolution, controlled not-found failure, opaque follower cursor continuation, independent following pages, request metadata, and abort propagation. Start with:
+The factory must assert platform identity, all seven capability fields, public profile resolution, controlled not-found failure, opaque follower cursor continuation when declared, independent following pages, request metadata, output-platform consistency, and abort propagation. Invoke the identical factory for all three supported platforms:
 
 ```ts
-import { defineInstagramProviderContract } from "../../../tests/contracts/provider-contract.js";
+import { defineSocialGraphProviderContract } from "../../../tests/contracts/provider-contract.js";
 import { FakeProvider } from "../src/index.js";
 
-defineInstagramProviderContract(() =>
-  FakeProvider.fromScenario({
-    profiles: {
-      target: {
-        profile: { platformUserId: "p1", username: "target" },
-        followers: [[{ platformUserId: "u1", username: "one" }]],
-        following: [[{ platformUserId: "u2", username: "two" }]],
+for (const platform of ["instagram", "x", "tiktok"] as const) {
+  defineSocialGraphProviderContract({
+    platform,
+    createProvider: () => FakeProvider.fromScenario({
+      platform,
+      capabilities: {
+        profileLookup: true,
+        followerCount: true,
+        followingCount: true,
+        followerIdentities: true,
+        followingIdentities: true,
+        pagination: true,
+        stableUserIds: true,
       },
-    },
-  }),
-);
+      profiles: {
+        target: {
+          profile: {
+            platform,
+            platformUserId: "p1",
+            username: "target",
+            followerCount: 1,
+            followingCount: 1,
+          },
+          followers: [[{ platform, platformUserId: "u1", username: "one" }]],
+          following: [[{ platform, platformUserId: "u2", username: "two" }]],
+        },
+      },
+    }),
+  });
+}
 ```
 
 - [ ] **Step 2: Verify the provider contract fails**
 
-Run: `pnpm --filter @instagram-social-graph/fake-provider test -- provider-contract.test.ts`
+Run: `pnpm --filter @social-graph/fake-provider test -- provider-contract.test.ts`
 
 Expected: FAIL because `FakeProvider`, scenario parsing, and shared contract implementation do not exist.
 
 - [ ] **Step 3: Implement the smallest deterministic provider**
 
-Use an in-memory scenario map. Encode fake cursors as opaque tokens such as `fake:p1:followers:1`; contract tests compare only round-trip behavior and must never parse the token. Count calls and throw normalized test errors configured by scenario. Do not import collection orchestration into the provider.
+Use one `FakeProvider` class backed by an in-memory scenario map. Each instance exposes the scenario's immutable `platform` and `capabilities`; validate that every profile/item has the same platform. Encode fake cursors as opaque tokens such as `fake:p1:followers:1`; contract tests compare only round-trip behavior and must never parse the token. Count calls and throw normalized test errors configured by scenario. Do not import collection orchestration into the provider.
 
 - [ ] **Step 4: Verify the shared contract**
 
-Run: `pnpm --filter @instagram-social-graph/fake-provider test -- provider-contract.test.ts && pnpm typecheck`
+Run: `pnpm --filter @social-graph/fake-provider test -- provider-contract.test.ts && pnpm typecheck`
 
 Expected: all shared provider contract cases pass and TypeScript exits 0.
 
@@ -244,25 +283,25 @@ git add tests/contracts providers/fake-provider pnpm-lock.yaml
 git commit -m "test(provider): add reusable provider contract suite"
 ```
 
-**Completion criteria:** `FakeProvider` passes the reusable factory without fake-specific assertions in the factory, and future providers can invoke the same suite by supplying only a factory function.
+**Completion criteria:** The same configurable `FakeProvider` class passes the same reusable contract factory as Instagram, X, and TikTok instances, capability/platform declarations are tested, YouTube is absent, and future providers can invoke the suite by supplying platform plus a factory function.
 
 ---
 
 ### Task 3: Normalized errors and profile resolution orchestration
 
-**Goal:** Resolve one profile through core and convert provider failures into safe, normalized public errors.
+**Goal:** Resolve one platform-qualified profile through core, enforce provider capabilities/platform identity, and convert provider failures into safe normalized errors.
 
 **Files:**
 
-- Create: `packages/instagram-core/src/errors/collection-error.ts`
-- Create: `packages/instagram-core/src/errors/normalize-error.ts`
-- Create: `packages/instagram-core/src/collection/resolve-profile.ts`
-- Modify: `packages/instagram-core/src/index.ts`
-- Test: `packages/instagram-core/tests/resolve-profile.test.ts`
+- Create: `packages/social-graph-core/src/errors/collection-error.ts`
+- Create: `packages/social-graph-core/src/errors/normalize-error.ts`
+- Create: `packages/social-graph-core/src/collection/resolve-profile.ts`
+- Modify: `packages/social-graph-core/src/index.ts`
+- Test: `packages/social-graph-core/tests/resolve-profile.test.ts`
 
 **Interfaces:**
 
-- Consumes: `InstagramProvider.resolveProfile`, `ProviderRequestContext`, and error contract types.
+- Consumes: `SocialGraphProvider.resolveProfile`, `ProviderRequestContext`, and error contract types.
 - Produces: `CollectionError`, `normalizeProviderError(error)`, and `resolveProfile(request, provider)`.
 
 - [ ] **Step 1: Write failing success and safe-error tests**
@@ -280,32 +319,46 @@ it("normalizes a not-found failure", async () => {
     retryable: false,
   });
 });
+
+it("rejects unsupported profile lookup before invoking the provider", async () => {
+  const unsupportedProvider = providerWith({ profileLookup: false });
+  await expect(resolveProfile(request, unsupportedProvider))
+    .rejects.toMatchObject({ category: "CAPABILITY_UNSUPPORTED" });
+  expect(unsupportedProvider.resolveCalls).toBe(0);
+});
+
+it("rejects request/provider and output platform mismatches", async () => {
+  await expect(resolveProfile(
+    { ...request, platform: "x" },
+    providerFor("instagram"),
+  )).rejects.toMatchObject({ category: "INVALID_INPUT" });
+});
 ```
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- resolve-profile.test.ts`
+Run: `pnpm --filter @social-graph/core test -- resolve-profile.test.ts`
 
 Expected: FAIL because `resolveProfile` and normalized error classes are absent.
 
 - [ ] **Step 3: Implement minimal profile orchestration and error normalization**
 
-Pass `runId`, `targetId`, and `AbortSignal` to the provider. Copy only allowed profile fields into a new object. Define all spec categories and preserve an internal `cause` without placing it in `toPublicError()`.
+Before invocation, require `profileLookup: true` and require request platform to equal `provider.platform`. Pass `runId`, `targetId`, and `AbortSignal` to the provider. Require returned profile platform to match and copy only allowed profile fields, including optional follower/following counts only when declared by capability. Define all spec categories and preserve an internal `cause` without placing it in `toPublicError()`.
 
 - [ ] **Step 4: Verify focused and regression tests**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- resolve-profile.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- resolve-profile.test.ts && pnpm test`
 
 Expected: success and safe-error tests pass; provider contract remains green.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests
+git add packages/social-graph-core/src packages/social-graph-core/tests
 git commit -m "feat(core): orchestrate safe profile resolution"
 ```
 
-**Completion criteria:** Profile resolution passes tracing/cancellation context, exposes only normalized fields, and emits the documented safe error taxonomy.
+**Completion criteria:** Profile resolution enforces provider platform and capabilities before invocation, rejects mismatched output, passes tracing/cancellation context, exposes only normalized fields, and emits the documented safe error taxonomy.
 
 ---
 
@@ -315,14 +368,14 @@ git commit -m "feat(core): orchestrate safe profile resolution"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/normalization/normalize-relationship.ts`
-- Create: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Modify: `packages/instagram-core/src/index.ts`
-- Test: `packages/instagram-core/tests/collect-relationships-stream.test.ts`
+- Create: `packages/social-graph-core/src/normalization/normalize-relationship.ts`
+- Create: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Modify: `packages/social-graph-core/src/index.ts`
+- Test: `packages/social-graph-core/tests/collect-relationships-stream.test.ts`
 
 **Interfaces:**
 
-- Consumes: resolved `ProviderProfile`, `CollectRelationshipRequest`, `InstagramProvider`, and provider page DTOs.
+- Consumes: resolved `ProviderProfile`, `CollectRelationshipRequest`, `SocialGraphProvider`, and provider page DTOs.
 - Produces: `collectRelationships(request, provider): AsyncGenerator<RelationshipStreamEvent>`.
 
 - [ ] **Step 1: Write a failing lazy-stream test**
@@ -340,32 +393,48 @@ it("does not request data until the consumer pulls and yields rows before summar
     value: { completeness: { complete: true, terminationReason: "SOURCE_EXHAUSTED" } },
   });
 });
+
+it.each([
+  ["followers", "followerIdentities"],
+  ["following", "followingIdentities"],
+] as const)("rejects %s when %s is not supported", async (relationship, capability) => {
+  const unsupportedProvider = providerWith({ [capability]: false });
+  const events = await consume(collectRelationships(
+    { ...request, relationship },
+    unsupportedProvider,
+  ));
+  expect(events.at(-1)).toMatchObject({
+    type: "summary",
+    value: { completeness: { error: { category: "CAPABILITY_UNSUPPORTED" } } },
+  });
+  expect(unsupportedProvider.pageCalls).toBe(0);
+});
 ```
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- collect-relationships-stream.test.ts`
+Run: `pnpm --filter @social-graph/core test -- collect-relationships-stream.test.ts`
 
 Expected: FAIL because the AsyncGenerator and normalizer do not exist.
 
 - [ ] **Step 3: Implement one-page streaming only**
 
-Fetch one page on the first consumer pull, normalize and yield each item individually, then yield exactly one `SOURCE_EXHAUSTED` summary when `hasMore` is false. Copy allow-listed fields; never spread a provider item into output. Assign one-based positions and an injected observation clock.
+On first pull, validate the matching identity capability before any page call. Fetch one page, require every provider item platform to equal `provider.platform`, normalize and yield each item individually with `platform`, then yield exactly one `SOURCE_EXHAUSTED` summary when `hasMore` is false. Copy allow-listed fields; never spread a provider item into output. Assign one-based positions and an injected observation clock.
 
 - [ ] **Step 4: Verify backpressure and output shape**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- collect-relationships-stream.test.ts && pnpm typecheck`
+Run: `pnpm --filter @social-graph/core test -- collect-relationships-stream.test.ts && pnpm typecheck`
 
 Expected: provider is lazy, rows precede summary, and raw provider fields are absent.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests
+git add packages/social-graph-core/src packages/social-graph-core/tests
 git commit -m "feat(core): stream normalized relationship rows"
 ```
 
-**Completion criteria:** The first production collection API is an AsyncGenerator, honors pull-based backpressure, and retains no full-result array.
+**Completion criteria:** The first production collection API is an AsyncGenerator, enforces per-operation capabilities and platform consistency, includes platform in normalized rows, honors pull-based backpressure, and retains no full-result array.
 
 ---
 
@@ -375,9 +444,9 @@ git commit -m "feat(core): stream normalized relationship rows"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/collection/pagination-state.ts`
-- Modify: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Test: `packages/instagram-core/tests/pagination.test.ts`
+- Create: `packages/social-graph-core/src/collection/pagination-state.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Test: `packages/social-graph-core/tests/pagination.test.ts`
 
 **Interfaces:**
 
@@ -406,28 +475,38 @@ it.each(["missing", "repeated"] as const)(
     });
   },
 );
+
+it("rejects a next page from a provider that declares pagination false", async () => {
+  const events = await consume(singlePageProviderWith({
+    capabilities: { pagination: false },
+    page: page([row("u1")], { hasMore: true, nextCursor: "unexpected" }),
+  }));
+  expect(events.at(-1)).toMatchObject({
+    value: { completeness: { error: { category: "PAGINATION_FAILED" } } },
+  });
+});
 ```
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- pagination.test.ts`
+Run: `pnpm --filter @social-graph/core test -- pagination.test.ts`
 
 Expected: the two-page case stops after page one or cursor anomaly cases do not produce `PAGINATION_FAILED`.
 
 - [ ] **Step 3: Implement minimal pagination state**
 
-Keep only current cursor, a `Set<string>` of seen cursor tokens, page ordinal, and counters. Fetch a next page only after all unique current-page items have been yielded. Treat `hasMore: true` without `nextCursor` and any repeated cursor as terminal normalized pagination errors.
+Keep only current cursor, a `Set<string>` of seen cursor tokens, page ordinal, and counters. Fetch a next page only after all unique current-page items have been yielded. Treat `hasMore: true` without `nextCursor`, any repeated cursor, and any next-page signal from a provider declaring `pagination: false` as terminal normalized pagination errors.
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- pagination.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- pagination.test.ts && pnpm test`
 
 Expected: multi-page order and lazy fetching pass; anomalies end with exactly one error summary.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src/collection packages/instagram-core/tests/pagination.test.ts
+git add packages/social-graph-core/src/collection packages/social-graph-core/tests/pagination.test.ts
 git commit -m "feat(core): paginate through opaque cursors"
 ```
 
@@ -441,10 +520,10 @@ git commit -m "feat(core): paginate through opaque cursors"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/deduplication/relationship-key.ts`
-- Create: `packages/instagram-core/src/deduplication/exact-deduplicator.ts`
-- Modify: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Test: `packages/instagram-core/tests/deduplication.test.ts`
+- Create: `packages/social-graph-core/src/deduplication/relationship-key.ts`
+- Create: `packages/social-graph-core/src/deduplication/exact-deduplicator.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Test: `packages/social-graph-core/tests/deduplication.test.ts`
 
 **Interfaces:**
 
@@ -464,32 +543,47 @@ it("uses source, relationship, and normalized username only when ID is absent", 
   expect(relationshipDedupeKey(base({ username: " User " })))
     .toBe(relationshipDedupeKey(base({ username: "user" })));
 });
+
+it("uses the username fallback when provider IDs are not declared stable", async () => {
+  const rows = relationships(await consume(streamFrom(
+    providerWith({ stableUserIds: false }, [
+      row({ platformUserId: "unstable-1", username: "Same" }),
+      row({ platformUserId: "unstable-2", username: "same" }),
+    ]),
+  )));
+  expect(rows).toHaveLength(1);
+});
+
+it("keeps otherwise identical identities separate across platforms", () => {
+  expect(relationshipDedupeKey(base({ platform: "instagram", platformUserId: "42" })))
+    .not.toBe(relationshipDedupeKey(base({ platform: "x", platformUserId: "42" })));
+});
 ```
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- deduplication.test.ts`
+Run: `pnpm --filter @social-graph/core test -- deduplication.test.ts`
 
 Expected: duplicate rows are emitted or key helpers are missing.
 
 - [ ] **Step 3: Implement the exact key set**
 
-Prefer `relationship:userId`; otherwise use `sourceUserId:relationship:username.toLocaleLowerCase("en-US").trim()`. Increment positions only after `accept` returns true. Increment raw, unique, and duplicate metrics at their exact decision points. Do not retain normalized relationship objects in the deduplicator.
+When `provider.capabilities.stableUserIds` is true and an item ID exists, prefer `platform:relationship:userId`. When it is false or an item ID is absent, use `platform:sourceUserId:relationship:username.toLocaleLowerCase("en-US").trim()`. Increment positions only after `accept` returns true. Increment raw, unique, and duplicate metrics at their exact decision points. Do not retain normalized relationship objects in the deduplicator.
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- deduplication.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- deduplication.test.ts && pnpm test`
 
 Expected: duplicates disappear, positions remain contiguous, and fallback keys do not cross source or relationship boundaries.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/deduplication.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/deduplication.test.ts
 git commit -m "feat(core): deduplicate streamed relationships exactly"
 ```
 
-**Completion criteria:** Exact overlap removal works by stable ID and fallback identity, with memory restricted to cursor state, keys, and counters rather than full results.
+**Completion criteria:** Exact overlap removal works by stable ID and fallback identity without cross-platform collisions, with memory restricted to cursor state, keys, and counters rather than full results.
 
 ---
 
@@ -499,9 +593,9 @@ git commit -m "feat(core): deduplicate streamed relationships exactly"
 
 **Files:**
 
-- Modify: `packages/instagram-core/src/contracts/collection.ts`
-- Modify: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Test: `packages/instagram-core/tests/max-results.test.ts`
+- Modify: `packages/social-graph-core/src/contracts/collection.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Test: `packages/social-graph-core/tests/max-results.test.ts`
 
 **Interfaces:**
 
@@ -568,7 +662,7 @@ it("D: reports SOURCE_EXHAUSTED when terminal-page remainder contains only dupli
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- max-results.test.ts`
+Run: `pnpm --filter @social-graph/core test -- max-results.test.ts`
 
 Expected: at least one of cases A-D reports the wrong terminal reason, emits too many rows, or fetches another page after a true max boundary.
 
@@ -585,14 +679,14 @@ Never fetch another page solely to decide completeness after reaching the maximu
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- max-results.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- max-results.test.ts && pnpm test`
 
 Expected: cases A-D pass, no more than `maxResults` rows are emitted, and no network page is fetched after a true maximum boundary.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/max-results.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/max-results.test.ts
 git commit -m "feat(core): enforce exact relationship limits"
 ```
 
@@ -606,11 +700,11 @@ git commit -m "feat(core): enforce exact relationship limits"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/retry/retry-operation.ts`
-- Create: `packages/instagram-core/src/retry/retry-policy.ts`
-- Modify: `packages/instagram-core/src/collection/resolve-profile.ts`
-- Modify: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Test: `packages/instagram-core/tests/retry.test.ts`
+- Create: `packages/social-graph-core/src/retry/retry-operation.ts`
+- Create: `packages/social-graph-core/src/retry/retry-policy.ts`
+- Modify: `packages/social-graph-core/src/collection/resolve-profile.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Test: `packages/social-graph-core/tests/retry.test.ts`
 
 **Interfaces:**
 
@@ -638,7 +732,7 @@ it("does not retry a permanent error", async () => {
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- retry.test.ts`
+Run: `pnpm --filter @social-graph/core test -- retry.test.ts`
 
 Expected: `retryOperation` is absent and collection paths make only direct provider calls.
 
@@ -648,14 +742,14 @@ Count the first call as attempt one. Cap exponential delay, apply injected rando
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- retry.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- retry.test.ts && pnpm test`
 
 Expected: retry timing, exhaustion, permanent errors, and call counters pass deterministically with no real sleep.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/retry.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/retry.test.ts
 git commit -m "feat(core): retry transient provider failures"
 ```
 
@@ -669,10 +763,10 @@ git commit -m "feat(core): retry transient provider failures"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/retry/abortable-delay.ts`
-- Modify: `packages/instagram-core/src/retry/retry-operation.ts`
-- Modify: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Test: `packages/instagram-core/tests/cancellation.test.ts`
+- Create: `packages/social-graph-core/src/retry/abortable-delay.ts`
+- Modify: `packages/social-graph-core/src/retry/retry-operation.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Test: `packages/social-graph-core/tests/cancellation.test.ts`
 
 **Interfaces:**
 
@@ -704,7 +798,7 @@ it("calls provider cleanup when the consumer closes early", async () => {
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- cancellation.test.ts`
+Run: `pnpm --filter @social-graph/core test -- cancellation.test.ts`
 
 Expected: pending work does not abort or iterator closure leaves provider work active.
 
@@ -714,14 +808,14 @@ Create an internal `AbortController`, link it to the caller signal, pass its sig
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- cancellation.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- cancellation.test.ts && pnpm test`
 
 Expected: provider calls and retry delay stop promptly; no relationship appears after terminal summary.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/cancellation.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/cancellation.test.ts
 git commit -m "feat(core): propagate collection cancellation"
 ```
 
@@ -735,9 +829,9 @@ git commit -m "feat(core): propagate collection cancellation"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/collection/completeness.ts`
-- Modify: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Test: `packages/instagram-core/tests/completeness.test.ts`
+- Create: `packages/social-graph-core/src/collection/completeness.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Test: `packages/social-graph-core/tests/completeness.test.ts`
 
 **Interfaces:**
 
@@ -765,7 +859,7 @@ it("emits exactly one summary and no later relationship", async () => {
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- completeness.test.ts`
+Run: `pnpm --filter @social-graph/core test -- completeness.test.ts`
 
 Expected: terminal logic is duplicated or one outcome violates the approved mapping.
 
@@ -775,14 +869,14 @@ Allow only one transition from `RUNNING` to a terminal outcome. Attach `PublicCo
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- completeness.test.ts && pnpm test && pnpm typecheck`
+Run: `pnpm --filter @social-graph/core test -- completeness.test.ts && pnpm test && pnpm typecheck`
 
 Expected: all four mappings and terminal-event invariants pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/completeness.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/completeness.test.ts
 git commit -m "feat(core): centralize completeness outcomes"
 ```
 
@@ -796,9 +890,9 @@ git commit -m "feat(core): centralize completeness outcomes"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/collection/collect-target.ts`
-- Modify: `packages/instagram-core/src/index.ts`
-- Test: `packages/instagram-core/tests/collect-target.test.ts`
+- Create: `packages/social-graph-core/src/collection/collect-target.ts`
+- Modify: `packages/social-graph-core/src/index.ts`
+- Test: `packages/social-graph-core/tests/collect-target.test.ts`
 
 **Interfaces:**
 
@@ -815,103 +909,115 @@ it("summarizes followers and following independently", async () => {
   expect(collectionSummary(events, "following").completeness)
     .toMatchObject({ complete: false, terminationReason: "ERROR" });
   expect(targetSummary(events).status).toBe("PARTIAL");
+  expect(targetSummary(events).platform).toBe("instagram");
 });
 ```
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- collect-target.test.ts`
+Run: `pnpm --filter @social-graph/core test -- collect-target.test.ts`
 
 Expected: `collectTarget` is absent or following failure terminates the full target stream.
 
 - [ ] **Step 3: Implement sequential per-target relationship orchestration**
 
-Resolve the profile once. For `both`, run followers then following as independent relationship streams and forward their events with target context. Sequential execution is the V1 minimum and naturally bounds memory. Derive `SUCCESS`, `PARTIAL`, or `FAILED` only from requested collection summaries.
+Require the target platform to match the injected provider and resolve the profile once. For `both`, run followers then following as independent relationship streams and forward their platform-bearing events with target context. Sequential execution is the V1 minimum and naturally bounds memory. Derive `SUCCESS`, `PARTIAL`, or `FAILED` only from requested collection summaries.
 
 - [ ] **Step 4: Verify all modes**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- collect-target.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- collect-target.test.ts && pnpm test`
 
 Expected: followers-only, following-only, both success, and one-side failure pass with independent summaries.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/collect-target.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/collect-target.test.ts
 git commit -m "feat(core): collect both relationship types independently"
 ```
 
-**Completion criteria:** Profile resolves once, selected modes are respected, and both-mode always exposes separate authoritative summaries.
+**Completion criteria:** Profile resolves once through the matching platform provider, selected modes are respected, and both-mode always exposes separate platform-bearing authoritative summaries.
 
 ---
 
 ### Task 12: Bounded multi-target streaming orchestration
 
-**Goal:** Process multiple targets with bounded concurrency and isolate target failures while preserving downstream backpressure.
+**Goal:** Process Instagram, X, and TikTok targets through an injected provider registry with bounded concurrency, failure isolation, and downstream backpressure.
 
 **Files:**
 
-- Create: `packages/instagram-core/src/collection/collect-targets.ts`
-- Create: `packages/instagram-core/src/collection/bounded-event-queue.ts`
-- Modify: `packages/instagram-core/src/index.ts`
-- Test: `packages/instagram-core/tests/collect-targets.test.ts`
+- Create: `packages/social-graph-core/src/collection/collect-targets.ts`
+- Create: `packages/social-graph-core/src/collection/bounded-event-queue.ts`
+- Modify: `packages/social-graph-core/src/index.ts`
+- Test: `packages/social-graph-core/tests/collect-targets.test.ts`
 
 **Interfaces:**
 
-- Consumes: `CollectTargetsRequest { targets, concurrency }` and `collectTarget`.
-- Produces: `collectTargets(request, provider): AsyncGenerator<TargetStreamEvent>`.
+- Consumes: `CollectTargetsRequest { targets: Array<{ platform, username }>, concurrency }`, `SocialGraphProviderRegistry`, and `collectTarget`.
+- Produces: `collectTargets(request, providers): AsyncGenerator<TargetStreamEvent>`.
 
 - [ ] **Step 1: Write failing isolation and backpressure tests**
 
 ```ts
 it("continues two successful targets when a third fails", async () => {
-  const events = await consume(collectTargets(threeTargetRequest, provider));
+  const events = await consume(collectTargets(threePlatformRequest, providerRegistry));
   expect(targetStatuses(events)).toEqual(new Map([
-    ["a", "SUCCESS"], ["b", "FAILED"], ["c", "SUCCESS"],
+    ["instagram:a", "SUCCESS"], ["x:b", "FAILED"], ["tiktok:c", "SUCCESS"],
   ]));
 });
 
+it("fails only a target whose platform has no registered provider", async () => {
+  const events = await consume(collectTargets(threePlatformRequest, registryWithout("x")));
+  expect(targetError(events, "x:b")).toMatchObject({ category: "PROVIDER_UNAVAILABLE" });
+  expect(targetStatus(events, "instagram:a")).toBe("SUCCESS");
+  expect(targetStatus(events, "tiktok:c")).toBe("SUCCESS");
+});
+
 it("never buffers more than the configured event capacity", async () => {
-  const stream = collectTargets({ ...request, concurrency: 2, eventBufferSize: 2 }, provider);
+  const stream = collectTargets(
+    { ...request, concurrency: 2, eventBufferSize: 2 },
+    providerRegistry,
+  );
   await pullSlowly(stream);
-  expect(provider.maxUnconsumedRows).toBeLessThanOrEqual(2);
+  expect(maxUnconsumedRows(providerRegistry)).toBeLessThanOrEqual(2);
 });
 
 it("aborts producers without requiring summaries when the consumer closes early", async () => {
-  const stream = collectTargets(request, blockingProvider);
+  const registry = blockingProviderRegistry();
+  const stream = collectTargets(request, registry);
   await stream.next();
   await stream.return(undefined);
-  expect(blockingProvider.activeTargetCount).toBe(0);
-  expect(blockingProvider.pendingOperationCount).toBe(0);
+  expect(activeTargetCount(registry)).toBe(0);
+  expect(pendingOperationCount(registry)).toBe(0);
 });
 ```
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- collect-targets.test.ts`
+Run: `pnpm --filter @social-graph/core test -- collect-targets.test.ts`
 
 Expected: batch orchestration is absent, a failure escapes globally, or producer progress is unbounded.
 
 - [ ] **Step 3: Implement bounded scheduling**
 
-Validate unique non-empty targets and positive concurrency. Use at most `concurrency` active target iterators and a queue capped by `eventBufferSize`; producers await capacity. Catch target-level normalized failures, emit a failed target summary, and continue remaining targets. Every target receives one terminal target summary when the batch iterator is consumed normally to completion.
+Validate unique non-empty `(platform, normalizedUsername)` targets and positive concurrency. For each target, select the provider from `SocialGraphProviderRegistry`, verify registry key equals `provider.platform`, and produce an isolated `PROVIDER_UNAVAILABLE` failure when missing. Use at most `concurrency` active target iterators and a queue capped by `eventBufferSize`; producers await capacity. Catch target-level normalized failures, emit a failed target summary, and continue remaining targets. Every target receives one terminal target summary when the batch iterator is consumed normally to completion.
 
 If the consumer closes the batch iterator early with `return()`, abort all active target iterators, wake and clean up blocked queue producers, remove signal listeners, and settle internal producer promises. Do not attempt to yield subsequent target summaries. The consumer that initiated closure owns recording the aborted outer-run state.
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- collect-targets.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- collect-targets.test.ts && pnpm test`
 
 Expected: concurrency cap, buffer cap, failure isolation, event context, normal-completion summaries, and early-closure cleanup all pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/collect-targets.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/collect-targets.test.ts
 git commit -m "feat(core): stream targets with bounded concurrency"
 ```
 
-**Completion criteria:** Multi-target work is bounded and backpressured; every target is summarized when normal batch consumption completes; early consumer closure aborts and cleans all producers without requiring later summaries; and one target failure does not unnecessarily terminate peers.
+**Completion criteria:** Multi-platform target work selects providers only through the registry, is bounded and backpressured, summarizes every target on normal completion, cleans all producers on early closure, and isolates missing-provider or target failures from other platforms.
 
 ---
 
@@ -921,13 +1027,13 @@ git commit -m "feat(core): stream targets with bounded concurrency"
 
 **Files:**
 
-- Create: `packages/instagram-core/src/metrics/relationship-metrics.ts`
-- Create: `packages/instagram-core/src/metrics/run-metrics.ts`
-- Create: `packages/instagram-core/src/metrics/derived-metrics.ts`
-- Modify: `packages/instagram-core/src/collection/resolve-profile.ts`
-- Modify: `packages/instagram-core/src/collection/collect-relationships.ts`
-- Modify: `packages/instagram-core/src/collection/collect-targets.ts`
-- Test: `packages/instagram-core/tests/metrics.test.ts`
+- Create: `packages/social-graph-core/src/metrics/relationship-metrics.ts`
+- Create: `packages/social-graph-core/src/metrics/run-metrics.ts`
+- Create: `packages/social-graph-core/src/metrics/derived-metrics.ts`
+- Modify: `packages/social-graph-core/src/collection/resolve-profile.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-relationships.ts`
+- Modify: `packages/social-graph-core/src/collection/collect-targets.ts`
+- Test: `packages/social-graph-core/tests/metrics.test.ts`
 
 **Interfaces:**
 
@@ -969,7 +1075,7 @@ it("returns null per-thousand rates for zero results", () => {
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- metrics.test.ts`
+Run: `pnpm --filter @social-graph/core test -- metrics.test.ts`
 
 Expected: counters are zero/incomplete or derived functions do not exist.
 
@@ -987,14 +1093,14 @@ Increment raw items on page receipt, unique/duplicates at dedupe, and returned c
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- metrics.test.ts && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- metrics.test.ts && pnpm test`
 
 Expected: exact counts pass for success, retry, and partial paths; diagnostic `attempts: 7` still counts as one successful core invocation; zero-result derived values are null.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/instagram-core/src packages/instagram-core/tests/metrics.test.ts
+git add packages/social-graph-core/src packages/social-graph-core/tests/metrics.test.ts
 git commit -m "feat(core): measure collection activity"
 ```
 
@@ -1004,7 +1110,7 @@ git commit -m "feat(core): measure collection activity"
 
 ### Task 14: Full FakeProvider Phase 1 integration suite
 
-**Goal:** Prove the complete provider-neutral flow with deterministic multi-page, multi-mode, multi-target scenarios.
+**Goal:** Prove the complete provider-neutral flow with deterministic Instagram, X, and TikTok multi-page, multi-mode, multi-target scenarios.
 
 **Files:**
 
@@ -1021,17 +1127,23 @@ git commit -m "feat(core): measure collection activity"
 - [ ] **Step 1: Write the failing black-box scenario**
 
 ```ts
-it("streams a mixed three-target run with authoritative summaries", async () => {
-  const events = await consume(collectTargets(request, FakeProvider.fromScenario(scenario)));
-  expect(rowsFor(events, "alpha", "followers")).toHaveLength(3);
-  expect(rowsFor(events, "alpha", "following")).toHaveLength(2);
-  expect(summaryFor(events, "beta").status).toBe("FAILED");
-  expect(summaryFor(events, "gamma").status).toBe("SUCCESS");
+it("streams Instagram, X, and TikTok through one core contract", async () => {
+  const providers = new Map([
+    ["instagram", FakeProvider.fromScenario(instagramScenario)],
+    ["x", FakeProvider.fromScenario(xScenario)],
+    ["tiktok", FakeProvider.fromScenario(tiktokScenario)],
+  ] satisfies Array<[Platform, SocialGraphProvider]>);
+  const events = await consume(collectTargets(request, providers));
+  expect(rowsFor(events, "instagram:alpha", "followers")).toHaveLength(3);
+  expect(rowsFor(events, "instagram:alpha", "following")).toHaveLength(2);
+  expect(summaryFor(events, "x:beta").status).toBe("FAILED");
+  expect(summaryFor(events, "tiktok:gamma").status).toBe("SUCCESS");
+  expect(platformsIn(events)).toEqual(new Set(["instagram", "x", "tiktok"]));
   expect(events.some(containsRawProviderObject)).toBe(false);
 });
 ```
 
-Scenario requirements: `alpha` has overlapping two-page followers and following; `beta` is not found; `gamma` has one transient page failure then succeeds. Consume one event at a time and assert the second page is not requested early.
+Use the same `FakeProvider` class for all three instances. Instagram `alpha` has overlapping two-page followers and following; X `beta` is not found; TikTok `gamma` has one transient page failure then succeeds. Give at least one scenario a reduced capability set and assert an unsupported identity operation returns `CAPABILITY_UNSUPPORTED` without a page call. Consume one event at a time and assert the second page is not requested early. Assert no event carries `youtube`.
 
 - [ ] **Step 2: Verify failure**
 
@@ -1056,7 +1168,7 @@ git add tests/integration providers/fake-provider package.json pnpm-lock.yaml
 git commit -m "test: cover the provider-neutral collection flow"
 ```
 
-**Completion criteria:** One black-box suite demonstrates pagination, both mode, dedupe, retry, target isolation, streaming/backpressure, completeness, metrics, and raw-object containment.
+**Completion criteria:** One black-box suite demonstrates configurable fake Instagram, X, and TikTok providers through the same core and registry, capability enforcement, pagination, both mode, dedupe, retry, target isolation, streaming/backpressure, completeness, metrics, platform-bearing normalized output, YouTube exclusion, and raw-object containment.
 
 ---
 
@@ -1066,68 +1178,69 @@ git commit -m "test: cover the provider-neutral collection flow"
 
 **Files:**
 
-- Create: `packages/instagram-core/tests/architecture.test.ts`
-- Create: `packages/instagram-core/tests/public-api.test.ts`
+- Create: `packages/social-graph-core/tests/architecture.test.ts`
+- Create: `packages/social-graph-core/tests/public-api.test.ts`
 - Modify: `eslint.config.mjs`
 
 **Interfaces:**
 
-- Consumes: source import graph and `packages/instagram-core/src/index.ts` exports.
+- Consumes: source import graph and `packages/social-graph-core/src/index.ts` exports.
 - Produces: tests/lint rules that reject forbidden dependencies and provider raw types in public normalized output.
 
 - [ ] **Step 1: Write a failing architecture test with a temporary forbidden fixture**
 
 ```ts
 it("forbids consumer and provider implementation imports from core", async () => {
-  const imports = await scanImports("packages/instagram-core/src");
+  const imports = await scanImports("packages/social-graph-core/src");
   expect(imports).not.toContainEqual(expect.stringMatching(/apify|pg|starpulse|fake-provider/));
 });
 
 it("exports no provider raw response field", () => {
   const row: NormalizedRelationship = normalizedFixture;
   expect(Object.keys(row)).not.toContain("rawResponse");
+  expect(["instagram", "x", "tiktok"]).toContain(row.platform);
 });
 ```
 
-Before implementation, add a test fixture import of `@instagram-social-graph/fake-provider` under `packages/instagram-core/tests/fixtures/forbidden-import.ts` and confirm the scanner detects it; then delete the fixture before the green run.
+Before implementation, add a test fixture import of `@social-graph/fake-provider` under `packages/social-graph-core/tests/fixtures/forbidden-import.ts` and confirm the scanner detects it; then delete the fixture before the green run.
 
 - [ ] **Step 2: Verify the test can fail for the intended violation**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- architecture.test.ts`
+Run: `pnpm --filter @social-graph/core test -- architecture.test.ts`
 
 Expected: FAIL naming `fake-provider` from the deliberate fixture, proving the guard detects a real forbidden edge.
 
 - [ ] **Step 3: Remove the deliberate violation and enforce boundaries**
 
-Limit scanning to production source after the failure proof, add ESLint restricted-import rules for `apify`, `pg`, Starpulse paths, and provider implementation paths, and lock the explicit public API export list in `public-api.test.ts`.
+Limit scanning to production source after the failure proof, add ESLint restricted-import rules for `apify`, `pg`, Starpulse paths, provider implementation paths, and platform-specific SDK/endpoint modules, and lock the explicit public API export list in `public-api.test.ts`. The locked API must include only `instagram`, `x`, and `tiktok` as platforms and must include capabilities and the provider registry.
 
 - [ ] **Step 4: Verify**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- architecture.test.ts public-api.test.ts && pnpm lint && pnpm test`
+Run: `pnpm --filter @social-graph/core test -- architecture.test.ts public-api.test.ts && pnpm lint && pnpm test`
 
 Expected: boundary tests pass, deliberate fixture is absent, and no forbidden package is present in core dependencies.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add eslint.config.mjs packages/instagram-core/tests
+git add eslint.config.mjs packages/social-graph-core/tests
 git commit -m "test(core): enforce architecture boundaries"
 ```
 
-**Completion criteria:** Automated checks reject Apify, PostgreSQL, Starpulse, and provider-implementation coupling and lock the intended core public surface.
+**Completion criteria:** Automated checks reject Apify, PostgreSQL, Starpulse, provider-implementation, and platform-specific SDK coupling; the public surface locks `Platform`, capabilities, registry, and platform-bearing normalized types without YouTube.
 
 ---
 
 ### Task 16: Provider development documentation and Phase 1 verification
 
-**Goal:** Document how a compliant future provider is implemented and run the complete Phase 1 acceptance gate.
+**Goal:** Document how compliant platform providers and registries are implemented and run the complete multi-platform Phase 1 acceptance gate.
 
 **Files:**
 
-- Create: `docs/providers/instagram-provider.md`
+- Create: `docs/providers/social-graph-provider.md`
 - Create: `docs/phase-1-verification.md`
 - Create: `README.md`
-- Test: `packages/instagram-core/tests/documentation-contract.test.ts`
+- Test: `packages/social-graph-core/tests/documentation-contract.test.ts`
 
 **Interfaces:**
 
@@ -1138,12 +1251,17 @@ git commit -m "test(core): enforce architecture boundaries"
 
 ```ts
 it("documents every required provider operation and contract-suite entrypoint", async () => {
-  const guide = await readFile("docs/providers/instagram-provider.md", "utf8");
+  const guide = await readFile("docs/providers/social-graph-provider.md", "utf8");
   for (const term of [
     "resolveProfile",
     "fetchFollowersPage",
     "fetchFollowingPage",
-    "defineInstagramProviderContract",
+    "defineSocialGraphProviderContract",
+    "SocialGraphProviderCapabilities",
+    "SocialGraphProviderRegistry",
+    "instagram",
+    "tiktok",
+    "YouTube",
     "opaque cursor",
     "AbortSignal",
     "raw response",
@@ -1153,13 +1271,13 @@ it("documents every required provider operation and contract-suite entrypoint", 
 
 - [ ] **Step 2: Verify failure**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- documentation-contract.test.ts`
+Run: `pnpm --filter @social-graph/core test -- documentation-contract.test.ts`
 
 Expected: FAIL because the provider guide does not exist.
 
 - [ ] **Step 3: Write the minimum complete provider guide and repository README**
 
-Document interface signatures, allowed normalized fields, opaque cursor rules, error mapping, retryability, abort duties, request metadata, raw-response containment, the shared contract test invocation, and the explicit prohibition on login/security/rate-limit bypasses. `docs/phase-1-verification.md` must list commands and blank evidence headings only where values are generated during execution; it must not claim tests passed before they run.
+Document interface signatures, the exact `Platform` union, all seven capability fields, registry composition, platform validation, allowed normalized fields, opaque cursor rules, error mapping, retryability, abort duties, request metadata, raw-response containment, the shared contract test invocation for each platform, Instagram/X/TikTok source expectations, YouTube exclusion, and the explicit prohibition on login/security/rate-limit bypasses. `docs/phase-1-verification.md` must list commands and blank evidence headings only where values are generated during execution; it must not claim tests passed before they run.
 
 - [ ] **Step 4: Run the Phase 1 verification gate and record actual evidence**
 
@@ -1179,14 +1297,14 @@ Expected: every command exits 0 with no warnings. Record the date, commit, comma
 
 - [ ] **Step 5: Re-run documentation and workspace verification after recording evidence**
 
-Run: `pnpm --filter @instagram-social-graph/core test -- documentation-contract.test.ts && pnpm test && git diff --check`
+Run: `pnpm --filter @social-graph/core test -- documentation-contract.test.ts && pnpm test && git diff --check`
 
 Expected: documentation contract and all regression tests pass; diff check is silent.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add README.md docs/providers docs/phase-1-verification.md packages/instagram-core/tests/documentation-contract.test.ts
+git add README.md docs/providers docs/phase-1-verification.md packages/social-graph-core/tests/documentation-contract.test.ts
 git commit -m "docs: document provider development and Phase 1 verification"
 ```
 
@@ -1194,4 +1312,4 @@ git commit -m "docs: document provider development and Phase 1 verification"
 
 ## Phase 1 final gate
 
-Phase 1 may be declared complete only when Tasks 1–16 are committed, the final verification commands pass from a clean checkout, the working tree is clean, and the implementation contains no out-of-scope consumer, production infrastructure, or live Instagram integration. Completion of Phase 1 does not authorize Phase 2, any live provider work, deployment, pricing, or publication.
+Phase 1 may be declared complete only when Tasks 1–16 are committed, the final verification commands pass from a clean checkout, the working tree is clean, and the implementation contains no out-of-scope consumer, production infrastructure, live Instagram/X/TikTok/YouTube integration, or YouTube platform contract. Completion of Phase 1 does not authorize Phase 2, any live provider work, deployment, pricing, or publication.
