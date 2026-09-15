@@ -1,6 +1,6 @@
-# Instagram Social Graph V1 Architecture Design
+# Multi-Platform Social Graph V1 Architecture Design
 
-**Status:** Approved
+**Status:** Awaiting approval — multi-platform revision
 
 **Date:** 2026-09-15
 
@@ -10,12 +10,12 @@
 
 ## 1. Objective and boundaries
 
-Build one reusable, provider-neutral Instagram public-profile relationship collection engine for two independent consumers:
+Build one reusable, provider-neutral public-profile relationship collection engine for Instagram, X, and TikTok, serving two independent consumers:
 
 1. An Apify Actor that streams normalized follower/following rows into an Apify Dataset and measures usage and cost.
 2. A Starpulse adapter that persists complete observations, establishes baselines, and detects relationship changes in PostgreSQL.
 
-The core must not depend on an Instagram endpoint, a single data vendor, Apify, Starpulse, or PostgreSQL. V1 does not implement a live Instagram provider. A deterministic `FakeProvider` must exercise the complete collection flow.
+The core must not depend on a platform endpoint, a single data vendor, Apify, Starpulse, or PostgreSQL. V1 does not implement a live Instagram, X, or TikTok provider. One configurable deterministic `FakeProvider` must exercise the complete collection flow for all three platforms through the same core contract. YouTube is explicitly outside V1 scope.
 
 V1 must not access private-only information, private messages, other users' credentials or sessions, or bypass login, security, rate limits, or platform controls.
 
@@ -25,19 +25,19 @@ V1 must not access private-only information, private messages, other users' cred
                           Consumer-neutral contracts
                                      │
                        ┌─────────────▼─────────────┐
-                       │      instagram-core       │
+                       │      social-graph-core       │
                        │ orchestration / streaming │
                        │ pagination / retry        │
                        │ normalization / dedupe    │
                        │ completeness / metrics    │
                        └─────────────┬─────────────┘
                                      │
-                            InstagramProvider
+                            SocialGraphProvider
                                      │
                       ┌──────────────┴──────────────┐
                       │                             │
                  FakeProvider             Future live providers
-                      │              compliant API / authorized session
+          instagram / x / tiktok     separately approved compliant sources
                ┌──────┴──────┐
                │             │
           Apify Actor   Starpulse Adapter
@@ -49,9 +49,9 @@ V1 must not access private-only information, private messages, other users' cred
 The repository is a monorepo so contracts and tests can be shared without coupling deployments:
 
 ```text
-instagram-social-graph/
+social-graph/
 ├── packages/
-│   └── instagram-core/
+│   └── social-graph-core/
 │       ├── src/
 │       │   ├── contracts/
 │       │   ├── collection/
@@ -76,47 +76,49 @@ instagram-social-graph/
 
 ## 3. Module boundaries
 
-### 3.1 `instagram-core/contracts`
+### 3.1 `social-graph-core/contracts`
 
 Defines provider interfaces, normalized domain types, streaming events, collection requests, collection completeness, standard errors, and metrics. It must contain no endpoint URLs, Apify Dataset types, SQL models, or Starpulse change events.
 
-### 3.2 `instagram-core/collection`
+### 3.2 `social-graph-core/collection`
 
 Resolves profiles and orchestrates followers, following, or both. It owns pagination, maximum-result enforcement, cursor anomaly detection, retry invocation, cancellation, multi-target isolation, streaming delivery, and final completeness status.
 
-### 3.3 `instagram-core/normalization`
+### 3.3 `social-graph-core/normalization`
 
 Converts provider items into stable internal relationships. Provider raw objects must never escape this boundary.
 
-### 3.4 `instagram-core/deduplication`
+### 3.4 `social-graph-core/deduplication`
 
-Uses the relationship account's stable platform user ID when available. Its key is `relationship + platformUserId`. The fallback key is `sourceProfileId + relationship + normalizedUsername`. Username normalization is for comparison only; output preserves the provider's normalized display value.
+Uses the relationship account's stable platform user ID when available. Its key is `platform + relationship + platformUserId`. The fallback key is `platform + sourceProfileId + relationship + normalizedUsername`. Platform is always part of the identity boundary so IDs or usernames from different networks cannot collide. Username normalization is for comparison only; output preserves the provider's normalized display value.
 
 Deduplication is streaming and run-scoped. It keeps only deduplication keys and counters in memory, not the full relationship objects. Exact deduplication is required in V1; if memory benchmarks later show the key set is too large, any probabilistic or externalized strategy requires a separate design decision because it could alter output correctness.
 
-### 3.5 `instagram-core/retry`
+### 3.5 `social-graph-core/retry`
 
 Retries only errors classified as transient. It uses a bounded attempt count, exponential backoff, jitter, provider-supplied `retryAfterMs`, and an injectable clock/sleeper. Permanent errors stop immediately. Core cancellation interrupts both requests and backoff.
 
-### 3.6 `instagram-core/metrics`
+### 3.6 `social-graph-core/metrics`
 
 Records measured core activity and derives rate metrics. Consumer-specific usage, such as Apify compute units and proxy prices, is added by the consumer without changing core contracts.
 
 ### 3.7 `fake-provider`
 
-Provides deterministic scenarios for multiple pages, overlapping pages, missing IDs, transient and terminal failures, unavailable profiles, private profiles, cursor loops, empty pages, request bytes, and abort behavior. It must pass the same provider contract suite required of every future live provider.
+Provides deterministic scenarios for Instagram, X, and TikTok, including different capability sets, multiple pages, overlapping pages, missing IDs, transient and terminal failures, unavailable profiles, private profiles, cursor loops, empty pages, request bytes, and abort behavior. One configurable implementation uses a scenario-level `platform`; three separate fake implementations are not required. It must pass the same provider contract suite required of every future live provider.
 
 ### 3.8 Consumer boundaries
 
-The Apify Actor maps streamed normalized records to Dataset rows. The Starpulse adapter persists normalized observations and performs database transactions and diffs. Neither imports a provider implementation directly; composition roots inject an `InstagramProvider` into core.
+The Apify Actor maps streamed normalized records to Dataset rows. The Starpulse adapter persists normalized observations and performs database transactions and diffs. Neither imports a provider implementation directly; composition roots inject a `SocialGraphProvider` into core.
 
 ## 4. Provider adapter contract
 
 The provider interface is page-oriented because source-specific cursor handling belongs at the collection boundary:
 
 ```ts
-interface InstagramProvider {
+interface SocialGraphProvider {
   readonly providerName: string;
+  readonly platform: Platform;
+  readonly capabilities: SocialGraphProviderCapabilities;
 
   resolveProfile(
     input: ResolveProfileInput,
@@ -133,10 +135,30 @@ interface InstagramProvider {
     context: ProviderRequestContext,
   ): Promise<ProviderRelationshipPage>;
 }
+
+type SocialGraphProviderRegistry = ReadonlyMap<Platform, SocialGraphProvider>;
 ```
 
 ```ts
-type ResolveProfileInput = { username: string };
+type Platform =
+  | "instagram"
+  | "x"
+  | "tiktok";
+
+type SocialGraphProviderCapabilities = {
+  profileLookup: boolean;
+  followerCount: boolean;
+  followingCount: boolean;
+  followerIdentities: boolean;
+  followingIdentities: boolean;
+  pagination: boolean;
+  stableUserIds: boolean;
+};
+
+type ResolveProfileInput = {
+  platform: Platform;
+  username: string;
+};
 
 type FetchRelationshipPageInput = {
   profileId: string;
@@ -151,8 +173,11 @@ type ProviderRequestContext = {
 };
 
 type ProviderProfile = {
+  platform: Platform;
   platformUserId: string;
   username: string;
+  followerCount?: number;
+  followingCount?: number;
   fullName?: string;
   isPrivate?: boolean;
   isVerified?: boolean;
@@ -160,6 +185,7 @@ type ProviderProfile = {
 };
 
 type ProviderRelationshipItem = {
+  platform: Platform;
   platformUserId?: string;
   username: string;
   fullName?: string;
@@ -183,7 +209,20 @@ type ProviderRelationshipPage = {
 };
 ```
 
+`ResolveProfileInput.platform` must equal the injected provider's `platform`; a mismatch is `INVALID_INPUT`. Every returned profile and relationship item must carry that same platform. Core rejects inconsistent provider output rather than silently relabeling it.
+
+Provider capabilities are authoritative declarations from the injected provider. Consumers and core must not infer support from platform names, provider names, method presence, or previous results. Core validates the requested operation before invoking it and returns a normalized `CAPABILITY_UNSUPPORTED` error when the required capability is false. `followerIdentities` and `followingIdentities` govern relationship identity streams; `followerCount` and `followingCount` govern profile count availability independently. `stableUserIds: true` means non-null IDs supplied by that provider are stable and may be primary dedupe keys; individual items can still omit an ID and use fallback. When `stableUserIds` is false, core does not trust item IDs for exact deduplication and uses the documented username fallback without inventing identifiers. `pagination: false` means the provider can return at most one terminal page for a supported identity operation.
+
+Single-target and single-relationship collection receive one `SocialGraphProvider`. Multi-target orchestration receives a `SocialGraphProviderRegistry`, selects the provider by the target's explicit `platform`, and validates that the registry key equals `provider.platform`. A missing provider produces `PROVIDER_UNAVAILABLE` for that target without terminating unrelated targets. The registry is consumer-neutral dependency injection; it contains no endpoint selection or provider-specific response logic.
+
 Cursor values are opaque. Consumers cannot parse or persist them as public business data. Core treats repeated cursors, `hasMore: true` without a next cursor, and non-progressing pagination as `PAGINATION_FAILED`.
+
+### 4.1 Platform source expectations
+
+- **Instagram:** follower/following identity collection is provider-dependent. Core contains no Instagram endpoint or extraction technique.
+- **X:** a future provider may use official X APIs that support follower/following lookup, but no live X provider is part of Phase 1.
+- **TikTok:** follower/following identity collection is provider-dependent. TikTok Research APIs are not hardcoded into the commercial architecture because Research Tools eligibility does not cover the intended commercial product use. Live source selection requires a later commercial, policy, and provider decision.
+- **YouTube:** out of scope. It is not included in the `Platform` union, fake scenarios, acceptance tests, or provider selection work.
 
 ## 5. Streaming collection contract
 
@@ -199,6 +238,7 @@ type TerminationReason =
   | "ABORTED";
 
 type NormalizedRelationship = {
+  platform: Platform;
   sourceUsername: string;
   sourceUserId: string;
   relationship: RelationshipType;
@@ -233,7 +273,7 @@ type RelationshipStreamEvent =
 
 function collectRelationships(
   request: CollectRelationshipsRequest,
-  provider: InstagramProvider,
+  provider: SocialGraphProvider,
 ): AsyncGenerator<RelationshipStreamEvent>;
 ```
 
@@ -245,7 +285,7 @@ Contract rules:
 4. If the consumer itself stops iteration early, it must call iterator `return()`; core aborts outstanding work and closes internal metrics as `ABORTED`. Because the consumer has closed the iterator, it cannot require a subsequently yielded summary; the consumer that initiated closure must record the abort in its own run status.
 5. Backpressure is native: core does not fetch the next page until the consumer has accepted yielded items from the current page. Apify can therefore await Dataset writes without unbounded buffering.
 6. Positions are one-based and contiguous over unique emitted rows. Duplicates do not consume positions.
-7. `scrapedAt` is the observation time assigned during normalization, not an inferred Instagram event time.
+7. `scrapedAt` is the observation time assigned during normalization, not an inferred platform event time.
 8. Both-mode creates two independently summarized streams under the target result, so followers can complete while following fails.
 9. Multi-target orchestration may interleave events with a bounded concurrency limit, but every event carries `runId`, `targetId`, and relationship context either directly or through its value.
 
@@ -260,7 +300,7 @@ type TargetStreamEvent =
 
 function collectTargets(
   request: CollectTargetsRequest,
-  provider: InstagramProvider,
+  providers: SocialGraphProviderRegistry,
 ): AsyncGenerator<TargetStreamEvent>;
 ```
 
@@ -307,7 +347,7 @@ Actor start
   → Actor exit
 ```
 
-Input supports multiple usernames, `followers`, `following`, or `both`, plus optional `maxFollowers` and `maxFollowing`. Usernames are trimmed, a leading `@` is removed, duplicates are rejected or collapsed deterministically, and maxima must be positive integers within configured safety limits.
+Input supports multiple `{ platform, username }` targets, `followers`, `following`, or `both`, plus optional `maxFollowers` and `maxFollowing`. Platform must be one of `instagram`, `x`, or `tiktok`. Usernames are trimmed, a leading `@` is removed, duplicates are rejected or collapsed by `(platform, normalizedUsername)`, and maxima must be positive integers within configured safety limits. The Actor composition root injects a provider registry; core validates provider presence, platform identity, and requested capabilities before collection.
 
 The default Dataset contains only normalized relationship rows. Provider raw responses, cursors, stack traces, credentials, cookies, tokens, and proxy secrets are forbidden. Failed targets remain visible in the run summary without terminating successful targets unnecessarily.
 
@@ -520,6 +560,8 @@ Core categories are:
 PROFILE_NOT_FOUND
 PROFILE_UNAVAILABLE
 PRIVATE_PROFILE_UNSUPPORTED
+CAPABILITY_UNSUPPORTED
+PROVIDER_UNAVAILABLE
 RATE_LIMITED
 SOURCE_TEMPORARILY_UNAVAILABLE
 PAGINATION_FAILED
@@ -579,11 +621,13 @@ SECONDS_PER_1000_RESULTS = runtime_ms / total_relationships_returned
 
 All per-1,000 metrics are `null` when no relationships were returned. Cost status is `actual`, `estimated`, or `unavailable`. Unavailable inputs remain `null`; they are never fabricated. Fake-provider benchmarks validate accounting and formulas but cannot set a commercial price.
 
+Core summaries retain platform identity, and run metrics can be grouped by platform without inferring platform from usernames or provider names.
+
 ## 13. Testing strategy
 
 ### 13.1 Provider contract tests
 
-Every provider must pass the same suite for profile resolution, controlled not-found errors, follower/following page shape, opaque cursor continuation, request metadata, error normalization, retry classification, and abort behavior.
+Every provider must pass the same suite for platform identity, capability reporting, profile resolution, controlled unsupported-capability and not-found errors, follower/following page shape, opaque cursor continuation where supported, request metadata, error normalization, retry classification, and abort behavior.
 
 ### 13.2 Core unit tests
 
@@ -593,7 +637,7 @@ Streaming tests must prove that the first normalized item is consumable before t
 
 ### 13.3 Fake-provider integration tests
 
-Exercise `FakeProvider → core → pagination → normalization → deduplication → streaming events → summaries → metrics`, including at least three usernames with one isolated failure.
+Exercise `FakeProvider → core → pagination → normalization → deduplication → streaming events → summaries → metrics`, including fake Instagram, fake X, and fake TikTok targets through the same core, different capability sets, and one isolated failure.
 
 ### 13.4 Apify Actor tests
 
@@ -614,7 +658,7 @@ Enforce that core does not depend on Apify or PostgreSQL, Actor does not depend 
 Phase 1 delivers only the provider-neutral, fully testable core foundation:
 
 - TypeScript monorepo foundation.
-- `instagram-core` contracts and `InstagramProvider` interface.
+- `social-graph-core` contracts and `SocialGraphProvider` interface.
 - AsyncIterable streaming collection and terminal summary contract.
 - Formal completeness and termination reasons.
 - Profile resolution orchestration.
@@ -624,13 +668,13 @@ Phase 1 delivers only the provider-neutral, fully testable core foundation:
 - Streaming normalization and deduplication.
 - Bounded retry and cancellation.
 - Error taxonomy and core metrics.
-- Deterministic `FakeProvider`.
+- One deterministic, configurable `FakeProvider` capable of simulating Instagram, X, and TikTok.
 - Provider contract, core unit, and fake-provider integration tests.
 - Architecture and provider-development documentation.
 
-Phase 1 does not implement a live provider, login/session automation, Apify production deployment, Store listing or pricing, Starpulse database deployment, DigitalOcean changes, scheduled monitoring, notifications, billing, UI, mobile applications, private-profile access, or security-control bypasses.
+Phase 1 does not implement a live Instagram, X, TikTok, or YouTube provider; login/session automation; Apify production deployment; Store listing or pricing; Starpulse database deployment; DigitalOcean changes; scheduled monitoring; notifications; billing; UI; mobile applications; private-profile access; or security-control bypasses.
 
-Phase 1 is complete when the fake provider proves multi-page streaming, all three scrape modes, isolated multi-target failure, exact deduplication, bounded memory behavior apart from the exact key set, authoritative completeness, retry and abort behavior, safe normalized output, correct metrics, and provider replaceability through the shared contract suite.
+Phase 1 is complete when one configurable fake provider proves Instagram, X, and TikTok scenarios through the same core; capability enforcement; multi-page streaming; all three scrape modes; isolated multi-target failure; exact deduplication; bounded memory behavior apart from the exact key set; authoritative completeness; retry and abort behavior; platform-bearing safe normalized output; correct metrics; and provider replaceability through the shared contract suite.
 
 ## 15. Later phases
 
@@ -640,7 +684,7 @@ Build input validation, Actor composition, streaming Dataset output, safe loggin
 
 ### Phase 3: Provider selection and live benchmark
 
-Evaluate compliant providers separately. A selected provider must pass the contract suite and documented legal, platform-policy, data-quality, reliability, stable-ID, cost, and operational review. Run approximately 100, 1,000, 5,000, and 10,000-result benchmarks.
+Evaluate compliant providers separately per platform. A selected provider must pass the contract suite and documented legal, platform-policy, data-quality, capability, reliability, stable-ID, cost, eligibility, and operational review. Run approximately 100, 1,000, 5,000, and 10,000-result benchmarks. Official X APIs may be evaluated; Instagram and TikTok identity sources remain provider-dependent; TikTok Research Tools are not assumed commercially eligible.
 
 ### Phase 4: Starpulse persistence
 
