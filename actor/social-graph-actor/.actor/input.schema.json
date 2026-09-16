@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1",
   "$schema": "https://schema.apify.com/input-schema.json",
   "title": "Social graph collection input",
   "type": "object",
@@ -11,20 +12,61 @@
       "maxItems": 100,
       "items": {
         "type": "object",
-        "required": ["platform", "username"],
+        "required": [
+          "platform",
+          "username"
+        ],
         "properties": {
-          "platform": { "type": "string", "enum": ["instagram", "x", "tiktok"] },
-          "username": { "type": "string", "minLength": 1 }
+          "platform": {
+            "type": "string",
+            "enum": [
+              "instagram",
+              "x",
+              "tiktok"
+            ]
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "additionalProperties": false
       }
     },
-    "scrapeType": { "type": "string", "enum": ["followers", "following", "both"], "default": "followers" },
-    "maxFollowers": { "type": "integer", "minimum": 1, "maximum": 100000 },
-    "maxFollowing": { "type": "integer", "minimum": 1, "maximum": 100000 },
-    "concurrency": { "type": "integer", "minimum": 1, "maximum": 8, "default": 2 },
-    "eventBufferSize": { "type": "integer", "minimum": 1, "maximum": 64 }
+    "scrapeType": {
+      "type": "string",
+      "enum": [
+        "followers",
+        "following",
+        "both"
+      ],
+      "default": "followers"
+    },
+    "maxFollowers": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "maxFollowing": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "default": 2
+    },
+    "eventBufferSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    }
   },
-  "required": ["targets", "scrapeType"],
+  "required": [
+    "targets",
+    "scrapeType"
+  ],
   "additionalProperties": false
 }
