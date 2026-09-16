@@ -15,12 +15,14 @@ describe("Phase 3 spike design contract", () => {
     );
 
     for (const term of [
-      "stop and report first",
-      "no retry, no alternate endpoint, no proxy",
-      "halts immediately",
-      "≤ 3 requests TOTAL",
-      "≤ 4 requests",
-      "Single-shot yields only to an",
+      "do NOT stop",
+      "header rotation",
+      "residential proxy",
+      "provider swap",
+      "platform rotation",
+      "owner approval first",
+      "rung 1 ≤ 3",
+      "rung 1 ≤ 4",
       "CAUGHT",
       "SOFT_LIMITED",
       "NOT_FOUND",
@@ -29,7 +31,6 @@ describe("Phase 3 spike design contract", () => {
       "Request budget",
       "Single-shot",
       "budget",
-      "no proxies",
       "login",
       "secUid",
       "Instagram",

@@ -3,11 +3,15 @@
 **Status:** Pending owner approval (P3-T1 deliverable)
 **Baseline:** V1 spec §4.1/§15 Phase 3; Phase 2 complete (actor deployed, empty registry)
 **Branch:** `feature/social-graph-phase-3` (from Phase 2 HEAD `f91129f`)
-**Owner directive (2026-09-17, overrides the spec's autonomous fallback ladder):**
-if an Instagram or TikTok scrape attempt gets caught, do NOT run an
-alternative solution — stop and report first. Every escalation rung of the
-original decision tree (header rotation, residential proxy, provider swap,
-platform rotation) requires explicit owner approval AFTER a caught outcome.
+**Owner directive (2026-09-17, revised same day):**
+if an Instagram or TikTok scrape attempt gets caught, do NOT stop —
+autonomously process the four escalation rungs in order:
+(1) header rotation, (2) residential proxy, (3) provider swap,
+(4) platform rotation. Rungs 1–3 are fully autonomous (existing quotas
+only). Rungs 4–5-class steps that spend money or create external
+commitments (renting Store actors, signing up for the X official API)
+still require explicit owner approval first. Report per-platform verdicts
+after the ladder completes.
 
 ## 1. Objective
 
@@ -24,8 +28,8 @@ Every probe response is classified exactly once:
 | Verdict | Signals | Consequence |
 | --- | --- | --- |
 | `OK` | Per-step success: RESOLVE step = 200 + expected profile signals (counts / secUid, no login wall); LIST step = 200 + parseable follower/following identity rows | continue within budget |
-| `CAUGHT` | HTTP 401/403; 429 with block headers; redirect to login; challenge/CAPTCHA page; 200 with login-wall HTML instead of data; empty payload with block signatures | **platform spike halts immediately — no retry, no alternate endpoint, no proxy — report with evidence** |
-| `SOFT_LIMITED` | 429/5xx with `Retry-After` and no block signature | treat as caught (conservative default; owner may authorize one polite retry) |
+| `CAUGHT` | HTTP 401/403; 429 with block headers; redirect to login; challenge/CAPTCHA page; 200 with login-wall HTML instead of data; empty payload with block signatures | record evidence, end the current rung, advance to the next escalation rung autonomously (rungs 1–3); money/commitment rungs ask the owner |
+| `SOFT_LIMITED` | 429/5xx with `Retry-After` and no block signature | treat as caught: end the current rung, advance the ladder (one polite retry inside the same rung is allowed when `Retry-After` is honored) |
 | `NOT_FOUND` | 404 / profile-missing payload | pick a different PUBLIC test profile (does not count as caught; one re-pick allowed) |
 | `NETWORK_ERROR` | DNS/TLS/timeout | report, do not retry |
 
@@ -38,13 +42,18 @@ unit-tested in P3-T2 before any live request exists.
   TOTAL (resolve + list pages + any NOT_FOUND re-pick all count against the
   same total). The budget is enforced in code — the probe tool refuses to
   exceed it.
-- **Single-shot**: each request is sent once; any verdict other than
-  `OK`/`NOT_FOUND` ends the platform spike. Single-shot yields only to an
-  explicit owner instruction (e.g. a post-CAUGHT polite retry).
-- **No circumvention**: real browser-like headers, but no header rotation
-  between attempts, no cookies, no proxies, no signature forging beyond
-  what a plain browser GET/POST carries. This is deliberately the weakest
-  rung — the owner explicitly gates every stronger one.
+- **Single-shot per attempt**: each request is sent once; a `CAUGHT`/`SOFT_LIMITED`
+  verdict ends the current RUNG (not the spike) and advances the ladder.
+- **Escalation ladder** (each rung has its own bounded budget, re-using the
+  classifier and evidence recorder):
+  1. Direct request, plain browser-like headers (weakest rung).
+  2. Header rotation: vary realistic browser header sets between attempts.
+  3. Residential proxy: route through the Apify plan's included residential
+     proxy quota (10 GB/month) — no additional spend.
+  4. Provider swap: rent a compliant Store actor — SPENDS credit and is
+     Creator-plan-restricted (Universal Actors only) → owner approval first.
+  5. Platform rotation: evaluate the X official API — external signup and
+     possibly paid → owner approval first.
 - **Origin**: the droplet's own IP (no Apify datacenter proxy) so the probe
   cannot pollute platform views of Apify IP ranges.
 - **Test subjects**: well-known large PUBLIC accounts, one per platform.
@@ -79,14 +88,14 @@ shot plan the owner approves before P3-T3/T4 fire.
 - **P3-T2** Probe tooling: `spike/probe.mjs` (bounded fetcher + classifier
   + evidence recorder) with pure-function unit tests; zero live requests;
   budget guard proven by test. Ladder + review + commit.
-- **P3-T3 ⛔** Instagram spike (live, ≤3 requests) — owner approves the
-  exact shot plan first; on any `CAUGHT`/`SOFT_LIMITED`: stop, report,
-  await instruction.
-- **P3-T4 ⛔** TikTok spike (live, ≤4 requests) — same gate; independent of
-  T3's outcome (one platform being caught never triggers cross-platform
-  "alternatives" — T4 proceeds only if the owner still wants it).
-- **P3-T5** Findings report: per-platform verdict, evidence, and the spec's
-  decision tree annotated with the owner-stop rule; owner picks direction.
+- **P3-T3 ⛔** Instagram spike (live): owner approves the exact shot plan
+  once; then the escalation ladder runs autonomously rung 1→3 without
+  stopping on caught; rungs 4–5 pause for owner approval if reached.
+  Per-rung budgets: rung 1 ≤ 3 requests; rung 2 ≤ 6; rung 3 ≤ 6.
+- **P3-T4 ⛔** TikTok spike (live): same structure (rung 1 ≤ 4, rung 2 ≤ 8,
+  rung 3 ≤ 8). One platform exhausting its ladder does not stop the other.
+- **P3-T5** Findings report: per-platform per-rung verdicts + evidence +
+  next-step options; owner picks direction.
 - **P3-T6+ (conditional)** Only on a viable verdict + owner approval:
   live provider implementation through the Phase 1 contract suite,
   provider review criteria (legal, platform-policy, data quality,
@@ -104,7 +113,8 @@ valid, reportable result; the phase gate fails only on process defects.
 
 ## 7. Working rules recap
 
-- Caught → full stop, no alternatives, report first (owner, 2026-09-17).
+- Caught → escalate autonomously through rungs 1–3; rungs 4–5 are
+  money/commitment gates (owner, 2026-09-17 revised).
 - Task-level verification ladder + baseline reports; phase-gate before
   Phase 4; no live request without its gate; budgets enforced in code.
 - No Store publication, no X work in this phase beyond noting the official
