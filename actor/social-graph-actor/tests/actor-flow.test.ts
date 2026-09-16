@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runActor } from "../src/main.js";
 import { LocalDatasetWriter } from "../src/dataset-writer.js";
+import { LocalKeyValueStore } from "../src/key-value-store.js";
 import { FakeProvider } from "@social-graph/fake-provider";
 import type {
   FakeProviderScenario,
@@ -305,6 +306,47 @@ describe("runActor end-to-end flow (FakeProvider registry)", () => {
       terminationReason: "ABORTED",
     });
     expect((outcome.metrics as CoreRunMetrics | undefined)?.requestsMade).toBeGreaterThanOrEqual(1);
+    expect(outcome.summary).toMatchObject({
+      aborted: true,
+      abort_reason: "timeout",
+      rows_written: 0,
+    });
+  });
+
+  it("stores RUN_SUMMARY in the key-value store with measured counters", async () => {
+    const dataset = new LocalDatasetWriter();
+    const keyValueStore = new LocalKeyValueStore();
+    let clock = new Date("2026-09-16T10:00:00.000Z");
+    const outcome = await runActor(batchInput, {
+      registry: defaultRegistry(),
+      dataset,
+      keyValueStore,
+    }, {
+      retry: fastRetry,
+      now: () => clock,
+      runId: "summary-run",
+    });
+
+    const stored = keyValueStore.get("RUN_SUMMARY") as {
+      run_id: string;
+      started_at: string;
+      finished_at: string;
+      rows_written: number;
+      apify: { dataset_operations: number; cost_data_status: string; estimated_cost: unknown };
+      derived: { SUCCESS_RATE: number; COST_PER_1000_RESULTS: unknown };
+    };
+    expect(stored.run_id).toBe("summary-run");
+    expect(stored.started_at).toBe("2026-09-16T10:00:00.000Z");
+    expect(stored.rows_written).toBe(5);
+    expect(stored.apify.dataset_operations).toBe(5);
+    expect(stored.apify.cost_data_status).toBe("unavailable");
+    expect(stored.apify.estimated_cost).toBeNull();
+    expect(stored.derived.SUCCESS_RATE).toBeCloseTo(1 / 3);
+    expect(stored.derived.COST_PER_1000_RESULTS).toBeNull();
+    expect(outcome.summary).toBe(stored);
+
+    void clock;
+    clock = new Date("2026-09-16T10:00:00.000Z");
   });
 
   it("rejects invalid input before any provider work", async () => {

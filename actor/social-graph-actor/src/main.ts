@@ -11,6 +11,9 @@ import type {
 import { validateActorInput } from "./input.js";
 import type { ValidatedActorInput } from "./input.js";
 import type { DatasetWriter } from "./dataset-writer.js";
+import type { KeyValueStore } from "./key-value-store.js";
+import { buildRunSummary } from "./run-summary.js";
+import type { RunSummary } from "./run-summary.js";
 
 export type TargetDelivery = {
   targetId: string;
@@ -31,11 +34,13 @@ export type ActorRunOutcome = {
   aborted: boolean;
   abortReason?: "timeout";
   metrics?: CoreRunMetrics;
+  summary?: RunSummary;
 };
 
 export type ActorPlatform = {
   registry: SocialGraphProviderRegistry;
   dataset: DatasetWriter;
+  keyValueStore?: KeyValueStore;
 };
 
 export type RunActorConfig = {
@@ -45,6 +50,8 @@ export type RunActorConfig = {
   retry?: RetryOptions;
   /** Up to `batchSize` dataset writes in flight per flush; default 1 (per-item). */
   batchSize?: number;
+  /** Wall clock used for RUN_SUMMARY timestamps; defaults to Date. */
+  now?: () => Date;
 };
 
 type StreamStep =
@@ -82,6 +89,9 @@ export async function runActor(
   }
 
   const failedTargets = new Set<string>();
+  const now = config.now ?? (() => new Date());
+  const startedAt = now();
+  let datasetOperations = 0;
   let rowsWritten = 0;
   let rowsDropped = 0;
   let metrics: CoreRunMetrics | undefined;
@@ -132,6 +142,7 @@ export async function runActor(
     // push and the flushWrites handler would crash the process as an
     // unhandled rejection before the failure could be converted.
     write.catch(() => undefined);
+    datasetOperations += 1;
     inflight.push({ targetId: event.targetId, promise: write });
   };
 
@@ -218,19 +229,43 @@ export async function runActor(
     }
   }
 
+  const finishedAt = now();
+  const summary = buildRunSummary(
+    {
+      runId,
+      input,
+      targets: input.targets.map((target) => {
+        const record = records.get(target.targetId);
+        if (record === undefined) throw new Error(`missing delivery record for ${target.targetId}`);
+        return record;
+      }),
+      rowsWritten,
+      rowsDropped,
+      aborted,
+      ...(abortReason === undefined ? {} : { abortReason }),
+      ...(metrics === undefined ? {} : { metrics }),
+    },
+    {
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      actorRuntimeMs: Math.max(0, finishedAt.getTime() - startedAt.getTime()),
+      datasetOperations,
+    },
+  );
+  if (platform.keyValueStore !== undefined) {
+    await platform.keyValueStore.setValue("RUN_SUMMARY", summary);
+  }
+
   const outcome: ActorRunOutcome = {
     runId,
     input,
-    targets: input.targets.map((target) => {
-      const record = records.get(target.targetId);
-      if (record === undefined) throw new Error(`missing delivery record for ${target.targetId}`);
-      return record;
-    }),
+    targets: summary.targets,
     rowsWritten,
     rowsDropped,
     aborted,
     ...(abortReason === undefined ? {} : { abortReason }),
     ...(metrics === undefined ? {} : { metrics }),
+    summary,
   };
   return outcome;
 }
