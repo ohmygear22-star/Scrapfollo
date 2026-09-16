@@ -12,6 +12,7 @@ import { normalizeProviderError } from "../errors/normalize-error.js";
 import { normalizeRelationship } from "../normalization/normalize-relationship.js";
 import { ExactDeduplicator } from "../deduplication/exact-deduplicator.js";
 import { completeCollection } from "./completeness.js";
+import { RelationshipMetricsCounter } from "../metrics/relationship-metrics.js";
 import { relationshipDedupeKey } from "../deduplication/relationship-key.js";
 import { isAbortError } from "../retry/abortable-delay.js";
 import { retryOperation } from "../retry/retry-operation.js";
@@ -21,6 +22,7 @@ import { PaginationState, PaginationStateError } from "./pagination-state.js";
 export type CollectRelationshipsOptions = {
   now?: () => Date;
   retry?: RetryOptions;
+  monotonicNow?: () => number;
 };
 
 export async function* collectRelationships(
@@ -74,10 +76,10 @@ export async function* collectRelationships(
 
   const pagination = new PaginationState();
   const deduplicator = new ExactDeduplicator();
-  const requestCounters = { made: 0, failed: 0, retried: 0 };
+  const monotonicNow = options.monotonicNow ?? Date.now;
+  const metrics = new RelationshipMetricsCounter(monotonicNow);
   let position = 0;
   let uniqueItemsProduced = 0;
-  let duplicatesRemoved = 0;
   let cursor: string | undefined;
   const fetchPage = request.relationship === "followers"
     ? provider.fetchFollowersPage.bind(provider)
@@ -112,18 +114,19 @@ export async function* collectRelationships(
           ...(options.retry ?? {}),
           hooks: {
             onAttempt: () => {
-              requestCounters.made += 1;
+              metrics.recordRequestMade();
             },
             onFailure: () => {
-              requestCounters.failed += 1;
+              metrics.recordRequestFailed();
             },
             onRetry: () => {
-              requestCounters.retried += 1;
+              metrics.recordRequestRetried();
             },
           },
         },
       );
       pagination.recordPage(page);
+      metrics.recordPage(page);
       let uniqueRowAfterMax = false;
 
       for (const item of page.items) {
@@ -146,7 +149,7 @@ export async function* collectRelationships(
           stableUserIds: provider.capabilities.stableUserIds,
         });
         if (deduplicator.has(key)) {
-          duplicatesRemoved += 1;
+          metrics.recordDuplicate();
           continue;
         }
         if (
@@ -160,6 +163,7 @@ export async function* collectRelationships(
 
         position += 1;
         uniqueItemsProduced += 1;
+        metrics.recordUnique();
         yield {
           type: "relationship",
           value: normalizeRelationship({
@@ -181,7 +185,7 @@ export async function* collectRelationships(
             type: "summary",
             value: {
               ...summaryBase(request, sourceProfile),
-              metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
+              metrics: metrics.finish(),
               completeness: completeCollection({ outcome: "max" }),
             },
           };
@@ -197,7 +201,7 @@ export async function* collectRelationships(
       type: "summary",
       value: {
         ...summaryBase(request, sourceProfile),
-        metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
+        metrics: metrics.finish(),
         completeness: completeCollection({ outcome: "source" }),
       },
     };
@@ -208,7 +212,7 @@ export async function* collectRelationships(
           type: "summary",
           value: {
             ...summaryBase(request, sourceProfile),
-            metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
+            metrics: metrics.finish(),
             completeness: completeCollection({ outcome: "abort" }),
           },
         };
@@ -223,7 +227,7 @@ export async function* collectRelationships(
         retryable: false,
         platform: request.platform,
         targetId: request.targetId,
-      }).toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters);
+      }).toPublicError(), metrics);
       return;
     }
 
@@ -231,7 +235,7 @@ export async function* collectRelationships(
       platform: request.platform,
       targetId: request.targetId,
     });
-    yield summaryFor(request, sourceProfile, normalized.toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters);
+    yield summaryFor(request, sourceProfile, normalized.toPublicError(), metrics);
     return;
   } finally {
     if (callerSignal !== undefined) {
@@ -245,42 +249,28 @@ function summaryFor(
   request: CollectRelationshipRequest,
   sourceProfile: ProviderProfile,
   error: ReturnType<CollectionError["toPublicError"]>,
-  pagination?: PaginationState,
-  uniqueItemsProduced = 0,
-  duplicatesRemoved = 0,
-  counters: RequestCounters = { made: 0, failed: 0, retried: 0 },
+  metrics?: RelationshipMetricsCounter,
 ): RelationshipStreamEvent {
   return {
     type: "summary",
     value: {
       ...summaryBase(request, sourceProfile),
-      ...(pagination === undefined ? {} : {
-        metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, counters),
-      }),
+      ...(metrics === undefined ? {} : { metrics: metrics.finish() }),
       completeness: completeCollection({ outcome: "error", error }),
     },
   };
 }
 
-type RequestCounters = { made: number; failed: number; retried: number };
-
-function metricsFor(
-  pagination: PaginationState,
-  uniqueItemsProduced: number,
-  duplicatesRemoved: number,
-  counters: RequestCounters,
-): RelationshipCollectionSummary["metrics"] {
-  return {
-    rawItemsReceived: pagination.rawItemsReceived,
-    uniqueItemsProduced,
-    duplicatesRemoved,
-    requestsMade: counters.made,
-    requestsFailed: counters.failed,
-    requestsRetried: counters.retried,
-    bytesTransferred: null,
-    runtimeMs: 0,
-  };
-}
+const ZERO_METRICS: RelationshipCollectionSummary["metrics"] = Object.freeze({
+  rawItemsReceived: 0,
+  uniqueItemsProduced: 0,
+  duplicatesRemoved: 0,
+  requestsMade: 0,
+  requestsFailed: 0,
+  requestsRetried: 0,
+  bytesTransferred: null,
+  runtimeMs: 0,
+});
 
 function summaryBase(
   request: CollectRelationshipRequest,
@@ -292,15 +282,6 @@ function summaryBase(
     platform: request.platform,
     sourceProfile,
     relationship: request.relationship,
-    metrics: {
-      rawItemsReceived: 0,
-      uniqueItemsProduced: 0,
-      duplicatesRemoved: 0,
-      requestsMade: 0,
-      requestsFailed: 0,
-      requestsRetried: 0,
-      bytesTransferred: null,
-      runtimeMs: 0,
-    },
+    metrics: ZERO_METRICS,
   };
 }

@@ -30,6 +30,10 @@ export type {
   SocialGraphProviderCapabilities,
   SocialGraphProviderRegistry,
 } from "./contracts/provider.js";
+export { derivePerThousand } from "./metrics/derived-metrics.js";
+export type { DerivedPerThousand } from "./metrics/derived-metrics.js";
+export { RelationshipMetricsCounter } from "./metrics/relationship-metrics.js";
+export { CoreRunMetricsTracker } from "./metrics/run-metrics.js";
 export { completeCollection } from "./collection/completeness.js";
 export type { CompletenessOutcome } from "./collection/completeness.js";
 export { resolveProfile } from "./collection/resolve-profile.js";

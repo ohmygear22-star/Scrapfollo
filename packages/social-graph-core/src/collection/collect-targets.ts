@@ -8,8 +8,14 @@ import { normalizeProviderError } from "../errors/normalize-error.js";
 import type { CollectTargetOptions } from "./collect-target.js";
 import { collectTarget } from "./collect-target.js";
 import { BoundedEventQueue, QueueClosedError } from "./bounded-event-queue.js";
+import { CoreRunMetricsTracker } from "../metrics/run-metrics.js";
+import type { CoreRunMetrics } from "../contracts/metrics.js";
 
-export type CollectTargetsOptions = CollectTargetOptions;
+export type CollectTargetsOptions = CollectTargetOptions & {
+  monotonicNow?: () => number;
+  /** Receives the immutable run metrics snapshot when the batch settles. */
+  onRunMetrics?: (metrics: CoreRunMetrics) => void;
+};
 
 type BatchTarget = CollectTargetsRequest["targets"][number];
 
@@ -43,6 +49,22 @@ export async function* collectTargets(
   let nextTargetIndex = 0;
   let activeTargets = 0;
   let finishedTargets = 0;
+  const monotonicNow = options.monotonicNow ?? Date.now;
+  const runTracker = new CoreRunMetricsTracker(monotonicNow);
+  const profileCountingRetry = {
+    ...(options.retry ?? {}),
+    hooks: {
+      onAttempt: () => {
+        runTracker.recordProfileRequestMade();
+      },
+      onFailure: () => {
+        runTracker.recordProfileRequestFailed();
+      },
+      onRetry: () => {
+        runTracker.recordProfileRequestRetried();
+      },
+    },
+  };
 
   const pump = (): void => {
     while (activeTargets < concurrency && nextTargetIndex < request.targets.length) {
@@ -56,6 +78,7 @@ export async function* collectTargets(
 
   const runTarget = async (target: BatchTarget): Promise<void> => {
     let iterator: AsyncIterator<TargetStreamEvent> | undefined;
+    runTracker.recordProfileRequested();
 
     try {
       iterator = collectTarget(
@@ -72,7 +95,7 @@ export async function* collectTargets(
         selectProvider(target),
         {
           ...(options.now === undefined ? {} : { now: options.now }),
-          ...(options.retry === undefined ? {} : { retry: options.retry }),
+          retry: profileCountingRetry,
         },
       )[Symbol.asyncIterator]();
       while (true) {
@@ -129,10 +152,21 @@ export async function* collectTargets(
   };
 
   try {
+    const trackRunEvent = (event: TargetStreamEvent): void => {
+      if (event.type === "relationship") {
+        runTracker.recordReturnedRow(event.value.relationship);
+      } else if (event.type === "collectionSummary") {
+        runTracker.recordCollection(event.value.metrics);
+      } else if (event.type === "targetSummary") {
+        runTracker.recordTargetStatus(event.value.status);
+      }
+    };
+
     pump();
     while (true) {
       const result = await queue.pull();
       if (result.done) break;
+      trackRunEvent(result.value);
       yield result.value;
     }
   } finally {
@@ -141,6 +175,7 @@ export async function* collectTargets(
     if (callerSignal !== undefined) {
       callerSignal.removeEventListener("abort", forwardAbort);
     }
+    options.onRunMetrics?.(runTracker.finish());
   }
 }
 
