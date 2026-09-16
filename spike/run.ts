@@ -15,6 +15,12 @@ import { BudgetGuard, classifyResponse, createEvidenceLog } from "./probe.ts";
 const execFileAsync = promisify(execFile);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Value-level redaction: any apify token appearing inside any string is scrubbed
+ *  before it can reach console output or the evidence log. */
+function scrub(text: string): string {
+  return text.replace(/apify_api_[A-Za-z0-9]+/g, "apify_api_[REDACTED]");
+}
+
 const HEADER_SETS: Record<string, Record<string, string>> = {
   safariMac: {
     "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
@@ -46,14 +52,14 @@ type Platform = keyof typeof SUBJECTS;
 async function curlRequest(
   url: string,
   headers: Record<string, string>,
-  proxyUrl: string | undefined,
+  proxy: { host: string; user: string; password: string } | undefined,
 ): Promise<{ status: number; headers: Record<string, string>; body: string }> {
   const args = ["-sS", "--max-time", "25", "-D", "-", "--compressed"];
   for (const [key, value] of Object.entries(headers)) {
     args.push("-H", `${key}: ${value}`);
   }
-  if (proxyUrl !== undefined) {
-    args.push("-x", proxyUrl);
+  if (proxy !== undefined) {
+    args.push("-x", proxy.host, "--proxy-user", `${proxy.user}:${proxy.password}`);
   }
   args.push(url);
   const { stdout } = await execFileAsync("curl", args, { maxBuffer: 20 * 1024 * 1024 });
@@ -80,7 +86,7 @@ async function shoot(
   platform: Platform,
   rung: number,
   headersName: string,
-  proxyUrl: string | undefined,
+  proxy: { host: string; user: string; password: string } | undefined,
   step: "resolve" | "list",
   url: string,
   guard: BudgetGuard,
@@ -91,12 +97,12 @@ async function shoot(
   }
   let classified;
   try {
-    const response = await curlRequest(url, HEADER_SETS[headersName], proxyUrl);
+    const response = await curlRequest(url, HEADER_SETS[headersName], proxy);
     classified = classifyResponse({ step, ...response });
     log.record({
       platform, rung, step, url,
       headerSet: headersName,
-      viaResidentialProxy: proxyUrl !== undefined,
+      viaResidentialProxy: proxy !== undefined,
       status: response.status,
       contentType: response.headers["content-type"] ?? "",
       location: response.headers["location"] ?? "",
@@ -105,18 +111,23 @@ async function shoot(
       reason: classified.reason,
     });
   } catch (error) {
-    classified = classifyResponse({ step, networkError: String(error) });
-    log.record({ platform, rung, step, url, headerSet: headersName, verdict: classified.verdict, reason: classified.reason });
+    const safeMessage = scrub(String(error));
+    classified = classifyResponse({ step, networkError: "request failed" });
+    log.record({ platform, rung, step, url, headerSet: headersName, verdict: classified.verdict, reason: safeMessage.slice(0, 200) });
   }
-  console.log(`[${platform} rung${rung} ${headersName} ${step}] ${classified.verdict}: ${classified.reason}`);
+  console.log(`[${platform} rung${rung} ${headersName} ${step}] ${classified.verdict}: ${scrub(classified.reason)}`);
   await sleep(2_000);
   return classified.verdict;
 }
 
-function proxyUrl(): string | undefined {
+function proxyConfig(): { host: string; user: string; password: string } | undefined {
   const token = process.env.APIFY_TOKEN;
   if (token === undefined || token === "") return undefined;
-  return `http://auto:${token},groups=RESIDENTIAL@proxy.apify.com:8000`;
+  return {
+    host: "http://proxy.apify.com:8000",
+    user: "auto",
+    password: `${token},groups=RESIDENTIAL`,
+  };
 }
 
 function resolveUrl(platform: Platform): string {
@@ -152,7 +163,7 @@ async function runPlatform(platform: Platform): Promise<void> {
 
   for (const rungSpec of rungs) {
     for (const headerSet of rungSpec.headerOrder) {
-      const proxy = rungSpec.useProxy ? proxyUrl() : undefined;
+      const proxy = rungSpec.useProxy ? proxyConfig() : undefined;
       if (platform === "instagram") {
         const resolve = await shoot(platform, rungSpec.rung, headerSet, proxy, "resolve", resolveUrl(platform), guard, log);
         if (resolve === "OK") {
