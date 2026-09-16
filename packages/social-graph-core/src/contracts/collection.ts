@@ -43,6 +43,8 @@ export type CollectTargetsRequest = {
   maxFollowers?: number;
   maxFollowing?: number;
   concurrency: number;
+  /** Maximum events buffered ahead of the consumer; producers wait for capacity. */
+  eventBufferSize?: number;
   signal?: AbortSignal;
 };
 

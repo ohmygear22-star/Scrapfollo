@@ -37,6 +37,8 @@ export { collectRelationships } from "./collection/collect-relationships.js";
 export type { CollectRelationshipsOptions } from "./collection/collect-relationships.js";
 export { collectTarget, deriveTargetStatus } from "./collection/collect-target.js";
 export type { CollectTargetOptions } from "./collection/collect-target.js";
+export { collectTargets } from "./collection/collect-targets.js";
+export type { CollectTargetsOptions } from "./collection/collect-targets.js";
 export { normalizeRelationship } from "./normalization/normalize-relationship.js";
 export type { NormalizeRelationshipInput } from "./normalization/normalize-relationship.js";
 export { ExactDeduplicator } from "./deduplication/exact-deduplicator.js";
