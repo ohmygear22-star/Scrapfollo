@@ -40,6 +40,16 @@ export {
   relationshipDedupeKey,
 } from "./deduplication/relationship-key.js";
 export type { RelationshipDedupeKeyInput } from "./deduplication/relationship-key.js";
+export { retryOperation } from "./retry/retry-operation.js";
+export type {
+  RetryFailureInfo,
+  RetryHookInfo,
+  RetryHooks,
+  RetryOperationOptions,
+  RetryRetryInfo,
+} from "./retry/retry-operation.js";
+export { DEFAULT_RETRY_POLICY } from "./retry/retry-policy.js";
+export type { RetryOptions, RetryPolicy } from "./retry/retry-policy.js";
 export { CollectionError } from "./errors/collection-error.js";
 export type { CollectionErrorOptions } from "./errors/collection-error.js";
 export { normalizeProviderError } from "./errors/normalize-error.js";

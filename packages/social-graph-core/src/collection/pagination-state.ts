@@ -4,12 +4,10 @@ export class PaginationState {
   currentCursor: string | undefined;
   readonly seenCursors = new Set<string>();
   pageOrdinal = 0;
-  requestsMade = 0;
   rawItemsReceived = 0;
 
   recordPage(page: ProviderRelationshipPage): void {
     this.pageOrdinal += 1;
-    this.requestsMade += 1;
     this.rawItemsReceived += page.items.length;
   }
 

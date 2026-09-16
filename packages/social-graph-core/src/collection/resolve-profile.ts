@@ -2,6 +2,8 @@ import type { CollectRelationshipRequest } from "../contracts/collection.js";
 import type { ProviderProfile, SocialGraphProvider } from "../contracts/provider.js";
 import { CollectionError } from "../errors/collection-error.js";
 import { normalizeProviderError } from "../errors/normalize-error.js";
+import { retryOperation } from "../retry/retry-operation.js";
+import type { RetryOptions } from "../retry/retry-policy.js";
 
 export async function resolveProfile(
   request: Pick<
@@ -9,6 +11,7 @@ export async function resolveProfile(
     "runId" | "targetId" | "platform" | "username" | "signal"
   >,
   provider: SocialGraphProvider,
+  retry: RetryOptions = {},
 ): Promise<ProviderProfile> {
   const context = { platform: request.platform, targetId: request.targetId };
 
@@ -32,12 +35,18 @@ export async function resolveProfile(
 
   let profile: ProviderProfile;
   try {
-    profile = await provider.resolveProfile(
-      { platform: request.platform, username: request.username },
+    profile = await retryOperation(
+      () => provider.resolveProfile(
+        { platform: request.platform, username: request.username },
+        {
+          runId: request.runId,
+          targetId: request.targetId,
+          ...(request.signal === undefined ? {} : { signal: request.signal }),
+        },
+      ),
       {
-        runId: request.runId,
-        targetId: request.targetId,
         ...(request.signal === undefined ? {} : { signal: request.signal }),
+        ...retry,
       },
     );
   } catch (error) {

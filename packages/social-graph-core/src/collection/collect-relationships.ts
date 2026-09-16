@@ -12,10 +12,13 @@ import { normalizeProviderError } from "../errors/normalize-error.js";
 import { normalizeRelationship } from "../normalization/normalize-relationship.js";
 import { ExactDeduplicator } from "../deduplication/exact-deduplicator.js";
 import { relationshipDedupeKey } from "../deduplication/relationship-key.js";
+import { retryOperation } from "../retry/retry-operation.js";
+import type { RetryOptions } from "../retry/retry-policy.js";
 import { PaginationState, PaginationStateError } from "./pagination-state.js";
 
 export type CollectRelationshipsOptions = {
   now?: () => Date;
+  retry?: RetryOptions;
 };
 
 export async function* collectRelationships(
@@ -69,6 +72,7 @@ export async function* collectRelationships(
 
   const pagination = new PaginationState();
   const deduplicator = new ExactDeduplicator();
+  const requestCounters = { made: 0, failed: 0, retried: 0 };
   let position = 0;
   let uniqueItemsProduced = 0;
   let duplicatesRemoved = 0;
@@ -79,16 +83,33 @@ export async function* collectRelationships(
 
   try {
     do {
-      const page = await fetchPage(
+      const page = await retryOperation(
+        () => fetchPage(
+          {
+            profileId: sourceProfile.platformUserId,
+            limit: request.maxResults ?? 100,
+            ...(cursor === undefined ? {} : { cursor }),
+          },
+          {
+            runId: request.runId,
+            targetId: request.targetId,
+            ...(request.signal === undefined ? {} : { signal: request.signal }),
+          },
+        ),
         {
-          profileId: sourceProfile.platformUserId,
-          limit: request.maxResults ?? 100,
-          ...(cursor === undefined ? {} : { cursor }),
-        },
-        {
-          runId: request.runId,
-          targetId: request.targetId,
           ...(request.signal === undefined ? {} : { signal: request.signal }),
+          ...(options.retry ?? {}),
+          hooks: {
+            onAttempt: () => {
+              requestCounters.made += 1;
+            },
+            onFailure: () => {
+              requestCounters.failed += 1;
+            },
+            onRetry: () => {
+              requestCounters.retried += 1;
+            },
+          },
         },
       );
       pagination.recordPage(page);
@@ -149,7 +170,7 @@ export async function* collectRelationships(
             type: "summary",
             value: {
               ...summaryBase(request, sourceProfile),
-              metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved),
+              metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
               completeness: { complete: false, terminationReason: "MAX_LIMIT_REACHED" },
             },
           };
@@ -168,7 +189,7 @@ export async function* collectRelationships(
         retryable: false,
         platform: request.platform,
         targetId: request.targetId,
-      }).toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved);
+      }).toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters);
       return;
     }
 
@@ -176,7 +197,7 @@ export async function* collectRelationships(
       platform: request.platform,
       targetId: request.targetId,
     });
-    yield summaryFor(request, sourceProfile, normalized.toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved);
+    yield summaryFor(request, sourceProfile, normalized.toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters);
     return;
   }
 
@@ -184,7 +205,7 @@ export async function* collectRelationships(
     type: "summary",
     value: {
       ...summaryBase(request, sourceProfile),
-      metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved),
+      metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
       completeness: { complete: true, terminationReason: "SOURCE_EXHAUSTED" },
     },
   };
@@ -197,31 +218,35 @@ function summaryFor(
   pagination?: PaginationState,
   uniqueItemsProduced = 0,
   duplicatesRemoved = 0,
+  counters: RequestCounters = { made: 0, failed: 0, retried: 0 },
 ): RelationshipStreamEvent {
   return {
     type: "summary",
     value: {
       ...summaryBase(request, sourceProfile),
       ...(pagination === undefined ? {} : {
-        metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved),
+        metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, counters),
       }),
       completeness: { complete: false, terminationReason: "ERROR", error },
     },
   };
 }
 
+type RequestCounters = { made: number; failed: number; retried: number };
+
 function metricsFor(
   pagination: PaginationState,
   uniqueItemsProduced: number,
   duplicatesRemoved: number,
+  counters: RequestCounters,
 ): RelationshipCollectionSummary["metrics"] {
   return {
     rawItemsReceived: pagination.rawItemsReceived,
     uniqueItemsProduced,
     duplicatesRemoved,
-    requestsMade: pagination.requestsMade,
-    requestsFailed: 0,
-    requestsRetried: 0,
+    requestsMade: counters.made,
+    requestsFailed: counters.failed,
+    requestsRetried: counters.retried,
     bytesTransferred: null,
     runtimeMs: 0,
   };

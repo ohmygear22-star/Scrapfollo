@@ -257,7 +257,12 @@ describe("collectRelationships single-page streaming", () => {
       }),
     });
 
-    const events = await consume(collectRelationships(request, sourceProfile, provider));
+    const events = await consume(collectRelationships(
+      request,
+      sourceProfile,
+      provider,
+      { retry: { policy: { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 1, jitterRatio: 0 } } },
+    ));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
