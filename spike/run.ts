@@ -120,9 +120,11 @@ async function shoot(
   return classified.verdict;
 }
 
-function proxyConfig(): { host: string; user: string; password: string } | undefined {
+function proxyConfig(): { host: string; user: string; password: string } {
   const token = process.env.APIFY_TOKEN;
-  if (token === undefined || token === "") return undefined;
+  if (token === undefined || token === "") {
+    throw new Error("rung 3 requires APIFY_TOKEN in the environment (residential proxy)");
+  }
   return {
     host: "http://proxy.apify.com:8000",
     user: "auto",
