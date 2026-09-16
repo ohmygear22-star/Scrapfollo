@@ -34,7 +34,8 @@
           }
         },
         "additionalProperties": false
-      }
+      },
+      "editor": "keyValue"
     },
     "scrapeType": {
       "title": "Scrape type",
