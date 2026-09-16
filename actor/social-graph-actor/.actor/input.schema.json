@@ -1,86 +1,46 @@
 {
   "schemaVersion": 1,
   "title": "Social graph collection input",
+  "description": "Collects follower/following identity lists. The targets array ({platform, username} pairs) is validated authoritatively by the actor code: trimmed usernames, leading @ stripped, duplicates by (platform, normalizedUsername) rejected, platform limited to instagram/x/tiktok, at most 100 targets.",
   "type": "object",
+  "additionalProperties": true,
   "properties": {
-    "targets": {
-      "title": "Targets",
-      "description": "Platform/username pairs to collect",
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 100,
-      "items": {
-        "type": "object",
-        "required": [
-          "platform",
-          "username"
-        ],
-        "properties": {
-          "platform": {
-            "title": "Platform",
-            "type": "string",
-            "enum": [
-              "instagram",
-              "x",
-              "tiktok"
-            ],
-            "description": "One of instagram, x, or tiktok"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string",
-            "minLength": 1,
-            "description": "Public username; leading @ is stripped"
-          }
-        },
-        "additionalProperties": false
-      },
-      "editor": "keyValue"
-    },
     "scrapeType": {
       "title": "Scrape type",
+      "description": "Which relationship lists to collect",
       "type": "string",
-      "enum": [
-        "followers",
-        "following",
-        "both"
-      ],
-      "default": "followers",
-      "description": "Which relationship lists to collect"
+      "enum": ["followers", "following", "both"],
+      "default": "followers"
     },
     "maxFollowers": {
       "title": "Maximum followers",
+      "description": "Upper bound on unique follower rows",
       "type": "integer",
       "minimum": 1,
-      "maximum": 100000,
-      "description": "Upper bound on unique follower rows"
+      "maximum": 100000
     },
     "maxFollowing": {
       "title": "Maximum following",
+      "description": "Upper bound on unique following rows",
       "type": "integer",
       "minimum": 1,
-      "maximum": 100000,
-      "description": "Upper bound on unique following rows"
+      "maximum": 100000
     },
     "concurrency": {
       "title": "Concurrency",
+      "description": "Maximum targets collected in parallel",
       "type": "integer",
       "minimum": 1,
       "maximum": 8,
-      "default": 2,
-      "description": "Maximum targets collected in parallel"
+      "default": 2
     },
     "eventBufferSize": {
       "title": "Event buffer size",
+      "description": "Maximum events buffered ahead of the consumer",
       "type": "integer",
       "minimum": 1,
-      "maximum": 64,
-      "description": "Maximum events buffered ahead of the consumer"
+      "maximum": 64
     }
   },
-  "required": [
-    "targets",
-    "scrapeType"
-  ],
-  "additionalProperties": false
+  "required": ["scrapeType"]
 }
