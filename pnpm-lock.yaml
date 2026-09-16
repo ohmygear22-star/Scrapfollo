@@ -36,6 +36,12 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@22.18.1)(supports-color@7.2.0)
 
+  actor/social-graph-actor:
+    dependencies:
+      '@social-graph/core':
+        specifier: workspace:*
+        version: link:../../packages/social-graph-core
+
   packages/social-graph-core: {}
 
   providers/fake-provider:

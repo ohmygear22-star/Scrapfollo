@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "providers/*"
+  - "actor/*"
 enableGlobalVirtualStore: false
 allowBuilds:
   esbuild@0.28.2: true
