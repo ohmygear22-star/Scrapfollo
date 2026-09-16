@@ -10,6 +10,7 @@ import type {
 import { CollectionError } from "../errors/collection-error.js";
 import { normalizeProviderError } from "../errors/normalize-error.js";
 import { normalizeRelationship } from "../normalization/normalize-relationship.js";
+import { PaginationState, PaginationStateError } from "./pagination-state.js";
 
 export type CollectRelationshipsOptions = {
   now?: () => Date;
@@ -50,64 +51,72 @@ export async function* collectRelationships(
     return;
   }
 
-  let page;
-  try {
-    const fetchPage = request.relationship === "followers"
-      ? provider.fetchFollowersPage.bind(provider)
-      : provider.fetchFollowingPage.bind(provider);
-    page = await fetchPage(
-      {
-        profileId: sourceProfile.platformUserId,
-        limit: request.maxResults ?? 100,
-      },
-      {
-        runId: request.runId,
-        targetId: request.targetId,
-        ...(request.signal === undefined ? {} : { signal: request.signal }),
-      },
-    );
+  const pagination = new PaginationState();
+  let position = 0;
+  let cursor: string | undefined;
+  const fetchPage = request.relationship === "followers"
+    ? provider.fetchFollowersPage.bind(provider)
+    : provider.fetchFollowingPage.bind(provider);
 
-    let position = 0;
-    for (const item of page.items) {
-      if (item.platform !== provider.platform) {
-        throw new CollectionError({
-          category: "INVALID_INPUT",
-          message: "Relationship item platform does not match provider platform",
-          retryable: false,
-          platform: request.platform,
+  try {
+    do {
+      const page = await fetchPage(
+        {
+          profileId: sourceProfile.platformUserId,
+          limit: request.maxResults ?? 100,
+          ...(cursor === undefined ? {} : { cursor }),
+        },
+        {
+          runId: request.runId,
           targetId: request.targetId,
-        });
+          ...(request.signal === undefined ? {} : { signal: request.signal }),
+        },
+      );
+      pagination.recordPage(page);
+
+      for (const item of page.items) {
+        if (item.platform !== provider.platform) {
+          throw new CollectionError({
+            category: "INVALID_INPUT",
+            message: "Relationship item platform does not match provider platform",
+            retryable: false,
+            platform: request.platform,
+            targetId: request.targetId,
+          });
+        }
+
+        position += 1;
+        yield {
+          type: "relationship",
+          value: normalizeRelationship({
+            sourceProfile,
+            relationship: request.relationship,
+            item,
+            position,
+            scrapedAt: (options.now ?? (() => new Date()))().toISOString(),
+          }),
+        };
       }
 
-      position += 1;
-      yield {
-        type: "relationship",
-        value: normalizeRelationship({
-          sourceProfile,
-          relationship: request.relationship,
-          item,
-          position,
-          scrapedAt: (options.now ?? (() => new Date()))().toISOString(),
-        }),
-      };
-    }
+      cursor = pagination.nextCursorFor(page, provider.capabilities.pagination);
+    } while (cursor !== undefined);
   } catch (error) {
+    if (error instanceof PaginationStateError) {
+      yield summaryFor(request, sourceProfile, new CollectionError({
+        category: "PAGINATION_FAILED",
+        message: error.message,
+        retryable: false,
+        platform: request.platform,
+        targetId: request.targetId,
+      }).toPublicError());
+      return;
+    }
+
     const normalized = normalizeProviderError(error, {
       platform: request.platform,
       targetId: request.targetId,
     });
     yield summaryFor(request, sourceProfile, normalized.toPublicError());
-    return;
-  }
-
-  if (page.hasMore) {
-    yield summaryFor(request, sourceProfile, new CollectionError({
-      category: "PAGINATION_FAILED",
-      message: "Additional page encountered before pagination support is active",
-      retryable: false,
-      platform: request.platform,
-      targetId: request.targetId,
-    }).toPublicError());
     return;
   }
 
