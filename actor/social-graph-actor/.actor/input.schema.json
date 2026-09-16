@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1",
+  "schemaVersion": 1,
   "$schema": "https://schema.apify.com/input-schema.json",
   "title": "Social graph collection input",
   "type": "object",
