@@ -30,6 +30,8 @@ export type {
   SocialGraphProviderCapabilities,
   SocialGraphProviderRegistry,
 } from "./contracts/provider.js";
+export { completeCollection } from "./collection/completeness.js";
+export type { CompletenessOutcome } from "./collection/completeness.js";
 export { resolveProfile } from "./collection/resolve-profile.js";
 export { collectRelationships } from "./collection/collect-relationships.js";
 export type { CollectRelationshipsOptions } from "./collection/collect-relationships.js";

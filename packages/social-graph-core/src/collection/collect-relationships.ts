@@ -11,6 +11,7 @@ import { CollectionError } from "../errors/collection-error.js";
 import { normalizeProviderError } from "../errors/normalize-error.js";
 import { normalizeRelationship } from "../normalization/normalize-relationship.js";
 import { ExactDeduplicator } from "../deduplication/exact-deduplicator.js";
+import { completeCollection } from "./completeness.js";
 import { relationshipDedupeKey } from "../deduplication/relationship-key.js";
 import { isAbortError } from "../retry/abortable-delay.js";
 import { retryOperation } from "../retry/retry-operation.js";
@@ -181,7 +182,7 @@ export async function* collectRelationships(
             value: {
               ...summaryBase(request, sourceProfile),
               metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
-              completeness: { complete: false, terminationReason: "MAX_LIMIT_REACHED" },
+              completeness: completeCollection({ outcome: "max" }),
             },
           };
           return;
@@ -197,7 +198,7 @@ export async function* collectRelationships(
       value: {
         ...summaryBase(request, sourceProfile),
         metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
-        completeness: { complete: true, terminationReason: "SOURCE_EXHAUSTED" },
+        completeness: completeCollection({ outcome: "source" }),
       },
     };
   } catch (error) {
@@ -208,7 +209,7 @@ export async function* collectRelationships(
           value: {
             ...summaryBase(request, sourceProfile),
             metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
-            completeness: { complete: false, terminationReason: "ABORTED" },
+            completeness: completeCollection({ outcome: "abort" }),
           },
         };
       }
@@ -256,7 +257,7 @@ function summaryFor(
       ...(pagination === undefined ? {} : {
         metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, counters),
       }),
-      completeness: { complete: false, terminationReason: "ERROR", error },
+      completeness: completeCollection({ outcome: "error", error }),
     },
   };
 }
