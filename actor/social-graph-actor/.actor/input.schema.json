@@ -1,6 +1,5 @@
 {
   "schemaVersion": 1,
-  "$schema": "https://schema.apify.com/input-schema.json",
   "title": "Social graph collection input",
   "type": "object",
   "properties": {
@@ -11,21 +10,17 @@
       "minItems": 1,
       "maxItems": 100,
       "items": {
+        "title": "Target",
         "type": "object",
-        "required": [
-          "platform",
-          "username"
-        ],
+        "required": ["platform", "username"],
         "properties": {
           "platform": {
+            "title": "Platform",
             "type": "string",
-            "enum": [
-              "instagram",
-              "x",
-              "tiktok"
-            ]
+            "enum": ["instagram", "x", "tiktok"]
           },
           "username": {
+            "title": "Username",
             "type": "string",
             "minLength": 1
           }
@@ -34,39 +29,37 @@
       }
     },
     "scrapeType": {
+      "title": "Scrape type",
       "type": "string",
-      "enum": [
-        "followers",
-        "following",
-        "both"
-      ],
+      "enum": ["followers", "following", "both"],
       "default": "followers"
     },
     "maxFollowers": {
+      "title": "Maximum followers",
       "type": "integer",
       "minimum": 1,
       "maximum": 100000
     },
     "maxFollowing": {
+      "title": "Maximum following",
       "type": "integer",
       "minimum": 1,
       "maximum": 100000
     },
     "concurrency": {
+      "title": "Concurrency",
       "type": "integer",
       "minimum": 1,
       "maximum": 8,
       "default": 2
     },
     "eventBufferSize": {
+      "title": "Event buffer size",
       "type": "integer",
       "minimum": 1,
       "maximum": 64
     }
   },
-  "required": [
-    "targets",
-    "scrapeType"
-  ],
+  "required": ["targets", "scrapeType"],
   "additionalProperties": false
 }
