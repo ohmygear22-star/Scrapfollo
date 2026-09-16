@@ -145,10 +145,14 @@ redaction unit test that pushes each forbidden shape through the logger.
 ## 7. Dependencies and toolchain policy
 
 - Runtime: Node 22 / pnpm 11.19.0 / TypeScript strict, same as Phase 1.
-- New dependencies are limited to the minimum Apify runtime surface
-  (`apify` or `@apify/actor`) plus existing workspace deps. Any package
-  requesting a lifecycle/build script other than the approved
-  `esbuild@0.28.2` stops the task for an owner decision — no
+- The platform layer is an interface (`DatasetWriter`, `KeyValueStore`,
+  structured logger). P2-T2 through P2-T5 run entirely against local
+  in-memory implementations — **zero new dependencies**. The real
+  Apify SDK (`apify` or `@apify/actor`) is added only in P2-T6 to bind
+  the deployment entry point, confining any dependency-approval risk to
+  the final gated task.
+- Any package requesting a lifecycle/build script other than the
+  approved `esbuild@0.28.2` stops the task for an owner decision — no
   approve-all, per the standing toolchain constraint.
 - The actor package must not import Apify SDK symbols into
   `packages/social-graph-core` (core stays consumer-neutral; enforced by

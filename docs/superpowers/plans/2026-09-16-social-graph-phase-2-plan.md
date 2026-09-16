@@ -66,7 +66,8 @@ covered).
 
 **Completion criteria:** Validation is pure and fully tested; invalid
 input fails before any provider work; actor package typechecks/lints
-within the workspace; no Apify dependency needed yet.
+within the workspace; ZERO new dependencies (local platform
+implementations only — the Apify SDK is deferred to P2-T6).
 
 ### P2-T3: Composition root and Dataset streaming
 
@@ -116,9 +117,11 @@ ladder green.
 **Goal:** The actor exists on the owner's account as a private dev
 actor, running nothing.
 
-**Steps:** Owner approves → `apify push` from the droplet using the env
-token → verify actor exists and is private via read-only API → record
-actor ID/name in the phase evidence.
+**Steps:** Owner approves → add the Apify SDK as the deployment binding
+(any non-esbuild build-script request halts for owner approval) →
+`apify push` from the droplet using the env token → verify actor exists
+and is private via read-only API → record actor ID/name in the phase
+evidence.
 
 **Completion criteria:** Private actor created under
 `eloquent_filbert_uwi`; zero runs executed; no Store publication; token
