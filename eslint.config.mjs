@@ -15,6 +15,7 @@ export default [
         AbortSignal: "readonly",
         clearTimeout: "readonly",
         setTimeout: "readonly",
+        URL: "readonly",
       },
     },
     plugins: { "@typescript-eslint": tseslint },

@@ -15,7 +15,13 @@ export type FakeProfileScenario = Readonly<{
 export type FakeProviderScenario = Readonly<{
   platform: Platform;
   capabilities: SocialGraphProviderCapabilities;
+  /** Fails every call to the operation (deterministic provider failure). */
   errors?: Partial<Record<FakeProviderOperation, FakeProviderErrorDefinition>>;
+  /**
+   * Fails the Nth call to an operation when schedule entry N-1 is defined,
+   * then behaves normally afterwards. Enables transient-failure testing.
+   */
+  failureSchedules?: Partial<Record<FakeProviderOperation, ReadonlyArray<FakeProviderErrorDefinition | undefined>>>;
   profiles: Readonly<Record<string, FakeProfileScenario>>;
 }>;
 

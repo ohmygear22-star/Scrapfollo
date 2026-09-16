@@ -164,6 +164,15 @@ export class FakeProvider implements SocialGraphProvider {
   }
 
   #throwConfiguredError(operation: FakeProviderOperation): void {
+    const scheduled = this.#scenario.failureSchedules?.[operation];
+    if (scheduled !== undefined) {
+      const callOrdinal = this.#calls.filter((call) => call.operation === operation).length;
+      const failure = scheduled[callOrdinal - 1];
+      if (failure !== undefined) {
+        throw new FakeProviderError(failure.category, failure.message, failure.retryable);
+      }
+    }
+
     const error = this.#scenario.errors?.[operation];
     if (error !== undefined) {
       throw new FakeProviderError(error.category, error.message, error.retryable);

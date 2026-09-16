@@ -1,17 +1,22 @@
 {
   "name": "social-graph",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@11.19.0",
-  "engines": { "node": ">=22 <23" },
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "build": "node \"$npm_execpath\" -r build",
-    "typecheck": "node \"$npm_execpath\" -r typecheck",
+    "typecheck": "node \"$npm_execpath\" -r typecheck && tsc -p tsconfig.check.json --noEmit",
     "lint": "eslint . --max-warnings=0",
     "test": "node \"$npm_execpath\" -r test",
     "test:integration": "vitest run tests/integration"
   },
   "devDependencies": {
     "@eslint/js": "9.35.0",
+    "@social-graph/core": "workspace:*",
+    "@social-graph/fake-provider": "workspace:*",
     "@types/node": "22.18.1",
     "@typescript-eslint/eslint-plugin": "8.42.0",
     "@typescript-eslint/parser": "8.42.0",
