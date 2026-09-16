@@ -41,6 +41,10 @@ importers:
       '@social-graph/core':
         specifier: workspace:*
         version: link:../../packages/social-graph-core
+    devDependencies:
+      '@social-graph/fake-provider':
+        specifier: workspace:*
+        version: link:../../providers/fake-provider
 
   packages/social-graph-core: {}
 

@@ -14,6 +14,7 @@ export default [
         AbortController: "readonly",
         AbortSignal: "readonly",
         clearTimeout: "readonly",
+        crypto: "readonly",
         setTimeout: "readonly",
         URL: "readonly",
       },
