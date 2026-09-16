@@ -10,6 +10,8 @@ import type {
 import { CollectionError } from "../errors/collection-error.js";
 import { normalizeProviderError } from "../errors/normalize-error.js";
 import { normalizeRelationship } from "../normalization/normalize-relationship.js";
+import { ExactDeduplicator } from "../deduplication/exact-deduplicator.js";
+import { relationshipDedupeKey } from "../deduplication/relationship-key.js";
 import { PaginationState, PaginationStateError } from "./pagination-state.js";
 
 export type CollectRelationshipsOptions = {
@@ -52,7 +54,10 @@ export async function* collectRelationships(
   }
 
   const pagination = new PaginationState();
+  const deduplicator = new ExactDeduplicator();
   let position = 0;
+  let uniqueItemsProduced = 0;
+  let duplicatesRemoved = 0;
   let cursor: string | undefined;
   const fetchPage = request.relationship === "followers"
     ? provider.fetchFollowersPage.bind(provider)
@@ -85,7 +90,21 @@ export async function* collectRelationships(
           });
         }
 
+        const key = relationshipDedupeKey({
+          platform: item.platform,
+          sourceUserId: sourceProfile.platformUserId,
+          relationship: request.relationship,
+          ...(item.platformUserId === undefined ? {} : { platformUserId: item.platformUserId }),
+          username: item.username,
+          stableUserIds: provider.capabilities.stableUserIds,
+        });
+        if (!deduplicator.accept(key)) {
+          duplicatesRemoved += 1;
+          continue;
+        }
+
         position += 1;
+        uniqueItemsProduced += 1;
         yield {
           type: "relationship",
           value: normalizeRelationship({
@@ -108,7 +127,7 @@ export async function* collectRelationships(
         retryable: false,
         platform: request.platform,
         targetId: request.targetId,
-      }).toPublicError());
+      }).toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved);
       return;
     }
 
@@ -116,7 +135,7 @@ export async function* collectRelationships(
       platform: request.platform,
       targetId: request.targetId,
     });
-    yield summaryFor(request, sourceProfile, normalized.toPublicError());
+    yield summaryFor(request, sourceProfile, normalized.toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved);
     return;
   }
 
@@ -124,6 +143,7 @@ export async function* collectRelationships(
     type: "summary",
     value: {
       ...summaryBase(request, sourceProfile),
+      metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved),
       completeness: { complete: true, terminationReason: "SOURCE_EXHAUSTED" },
     },
   };
@@ -133,13 +153,36 @@ function summaryFor(
   request: CollectRelationshipRequest,
   sourceProfile: ProviderProfile,
   error: ReturnType<CollectionError["toPublicError"]>,
+  pagination?: PaginationState,
+  uniqueItemsProduced = 0,
+  duplicatesRemoved = 0,
 ): RelationshipStreamEvent {
   return {
     type: "summary",
     value: {
       ...summaryBase(request, sourceProfile),
+      ...(pagination === undefined ? {} : {
+        metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved),
+      }),
       completeness: { complete: false, terminationReason: "ERROR", error },
     },
+  };
+}
+
+function metricsFor(
+  pagination: PaginationState,
+  uniqueItemsProduced: number,
+  duplicatesRemoved: number,
+): RelationshipCollectionSummary["metrics"] {
+  return {
+    rawItemsReceived: pagination.rawItemsReceived,
+    uniqueItemsProduced,
+    duplicatesRemoved,
+    requestsMade: pagination.requestsMade,
+    requestsFailed: 0,
+    requestsRetried: 0,
+    bytesTransferred: null,
+    runtimeMs: 0,
   };
 }
 
