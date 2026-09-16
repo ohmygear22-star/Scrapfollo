@@ -6,7 +6,7 @@ import type { NormalizedRelationship } from "../src/index.js";
 
 const PACKAGE_ROOT = join(import.meta.dirname, "..");
 
-const FORBIDDEN_IMPORT_PATTERN = /apify|pg|starpulse|fake-provider/i;
+const FORBIDDEN_IMPORT_PATTERN = /apify|pg|starpulse|fake-provider|@social-graph\/actor/i;
 
 async function collectTypeScriptFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -26,12 +26,12 @@ async function collectTypeScriptFiles(directory: string): Promise<string[]> {
 async function scanImports(directory: string): Promise<Array<{ file: string; specifier: string }>> {
   const files = await collectTypeScriptFiles(directory);
   const imports: Array<{ file: string; specifier: string }> = [];
-  const importPattern = /(?:import|export)[^'"]*?from\s*["']([^"']+)["']|(?:import|export)\s*["']([^"']+)["']/g;
+  const importPattern = /(?:import|export)[^'"]*?from\s*["']([^"']+)["']|(?:import|export)\s*["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)/g;
 
   for (const file of files) {
     const source = await readFile(file, "utf8");
     for (const match of source.matchAll(importPattern)) {
-      const specifier = match[1] ?? match[2];
+      const specifier = match[1] ?? match[2] ?? match[3];
       if (specifier !== undefined) {
         imports.push({ file: file.slice(PACKAGE_ROOT.length + 1), specifier });
       }
