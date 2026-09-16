@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "dependencies": {
+    "apify": "3.7.2"
+  }
+}

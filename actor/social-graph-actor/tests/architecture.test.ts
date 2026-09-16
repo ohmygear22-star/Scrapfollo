@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 
 const PACKAGE_ROOT = join(import.meta.dirname, "..");
 
-const FORBIDDEN_IN_SRC = /apify|pg|starpulse|fake-provider|@social-graph\/actor/i;
+const FORBIDDEN_IN_SRC = /pg|starpulse|fake-provider|@social-graph\/actor/i;
+/** The Apify SDK is deliberately confined to this single binding module (P2-T6). */
+const APIFY_BINDING_FILE = "src/apify-binding.ts";
 
 async function collectTypeScriptFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -39,16 +41,27 @@ async function scanImports(directory: string): Promise<Array<{ file: string; spe
 }
 
 describe("actor package architecture boundaries", () => {
-  it("imports only relative modules and the core contract in production source", async () => {
+  it("imports only relative modules, the core contract, and (in the binding only) the Apify SDK", async () => {
     const imports = await scanImports(join(PACKAGE_ROOT, "src"));
 
-    const external = imports.filter(({ specifier }) =>
-      !specifier.startsWith(".") && specifier !== "@social-graph/core");
+    const external = imports.filter(({ file, specifier }) =>
+      !specifier.startsWith(".")
+      && specifier !== "@social-graph/core"
+      && !(file === APIFY_BINDING_FILE && (specifier === "apify" || specifier.startsWith("apify/"))));
     expect(external).toEqual([]);
 
     expect(imports).not.toContainEqual(
       expect.objectContaining({ specifier: expect.stringMatching(FORBIDDEN_IN_SRC) }),
     );
+  });
+
+  it("confines the Apify SDK to the single binding module", async () => {
+    const imports = await scanImports(join(PACKAGE_ROOT, "src"));
+
+    const sdkImports = imports.filter(({ file, specifier }) =>
+      (specifier === "apify" || specifier.startsWith("apify/"))
+      && file !== APIFY_BINDING_FILE);
+    expect(sdkImports).toEqual([]);
   });
 
   it("keeps the fake provider out of production source", async () => {

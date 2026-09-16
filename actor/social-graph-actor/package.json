@@ -1,7 +1,7 @@
 {
   "name": "@social-graph/actor",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "exports": {
     ".": {
@@ -13,12 +13,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.typecheck.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:bundle": "node build.mjs"
   },
   "dependencies": {
-    "@social-graph/core": "workspace:*"
+    "@social-graph/core": "workspace:*",
+    "apify": "3.7.2"
   },
   "devDependencies": {
-    "@social-graph/fake-provider": "workspace:*"
+    "@social-graph/fake-provider": "workspace:*",
+    "esbuild": "0.28.2"
   }
 }

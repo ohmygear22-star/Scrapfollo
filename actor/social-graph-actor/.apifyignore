@@ -1,0 +1,10 @@
+.env
+node_modules
+tests
+src
+*.ts
+tsconfig*.json
+build.mjs
+.git
+.gitignore
+dist

@@ -3,7 +3,7 @@ import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 
 export default [
-  { ignores: ["**/dist/**", "**/node_modules/**"] },
+  { ignores: ["**/dist/**", "**/node_modules/**", "**/bundle/**"] },
   js.configs.recommended,
   {
     files: ["**/*.ts"],
@@ -14,7 +14,9 @@ export default [
         AbortController: "readonly",
         AbortSignal: "readonly",
         clearTimeout: "readonly",
+        console: "readonly",
         crypto: "readonly",
+        process: "readonly",
         setTimeout: "readonly",
         URL: "readonly",
       },
@@ -51,6 +53,7 @@ export default [
   },
   {
     files: ["actor/social-graph-actor/src/**/*.ts"],
+    ignores: ["**/apify-binding.ts"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [
@@ -65,7 +68,27 @@ export default [
               "@social-graph/actor",
               "*fake-provider*",
             ],
-            message: "Actor production source may import only the core contract; the Apify SDK binding arrives in P2-T6 and the fake provider stays test-only.",
+            message: "Actor production source may import only the core contract; the Apify SDK is confined to src/apify-binding.ts and the fake provider stays test-only.",
+          },
+        ],
+      }],
+    },
+  },
+  {
+    files: ["actor/social-graph-actor/src/apify-binding.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [
+          {
+            group: [
+              "pg",
+              "pg/*",
+              "*starpulse*",
+              "@social-graph/fake-provider",
+              "@social-graph/actor",
+              "*fake-provider*",
+            ],
+            message: "The Apify binding module may import the SDK and core, but no databases, Starpulse, or the fake provider.",
           },
         ],
       }],
