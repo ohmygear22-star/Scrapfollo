@@ -10,7 +10,6 @@
       "minItems": 1,
       "maxItems": 100,
       "items": {
-        "title": "Target",
         "type": "object",
         "required": [
           "platform",
@@ -34,8 +33,7 @@
             "description": "Public username; leading @ is stripped"
           }
         },
-        "additionalProperties": false,
-        "description": "A single collection target"
+        "additionalProperties": false
       }
     },
     "scrapeType": {
