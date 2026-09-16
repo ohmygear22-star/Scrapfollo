@@ -148,7 +148,10 @@ const threeTargets = [
   { targetId: "t1", platform: "instagram" as const, username: "alpha" },
   { targetId: "t2", platform: "x" as const, username: "beta" },
   { targetId: "t3", platform: "tiktok" as const, username: "gamma" },
-];
+] as const;
+
+const firstTarget = threeTargets[0];
+if (firstTarget === undefined) throw new Error("fixture targets missing");
 
 describe("collectTargets multi-target orchestration", () => {
   it("continues two successful targets when a third fails", async () => {
@@ -267,7 +270,7 @@ describe("collectTargets multi-target orchestration", () => {
     ]);
     const provider = registryProvider("instagram", { pages: singleRowPages });
     const stream = collectTargets(
-      { ...baseRequest, targets: [threeTargets[0]], concurrency: 1, eventBufferSize: 2 },
+      { ...baseRequest, targets: [firstTarget], concurrency: 1, eventBufferSize: 2 },
       registryOf([["instagram", provider]]),
     );
 
@@ -289,7 +292,7 @@ describe("collectTargets multi-target orchestration", () => {
       gate: () => new Promise<void>(() => {}),
     });
     const stream = collectTargets(
-      { ...baseRequest, targets: [threeTargets[0]], concurrency: 1 },
+      { ...baseRequest, targets: [firstTarget], concurrency: 1 },
       registryOf([["instagram", instagram]]),
     );
 
@@ -330,7 +333,7 @@ describe("collectTargets multi-target orchestration", () => {
     ))).rejects.toMatchObject({ category: "INVALID_INPUT" });
 
     await expect(consume(collectTargets(
-      { ...baseRequest, targets: [threeTargets[0]], concurrency: 0 },
+      { ...baseRequest, targets: [firstTarget], concurrency: 0 },
       registry,
     ))).rejects.toMatchObject({ category: "INVALID_INPUT" });
 

@@ -6,7 +6,6 @@ import type {
   ProviderProfile,
   ProviderRelationshipItem,
   ProviderRelationshipPage,
-  RelationshipStreamEvent,
   SocialGraphProvider,
   SocialGraphProviderCapabilities,
   TargetStreamEvent,
@@ -239,7 +238,7 @@ describe("collectTarget orchestration", () => {
       .toBe("SOURCE_EXHAUSTED");
     expect(targetSummary(events).status).toBe("SUCCESS");
     const followers = events
-      .filter((event): event is Extract<RelationshipStreamEvent, { type: "relationship" }> =>
+      .filter((event): event is Extract<TargetStreamEvent, { type: "relationship" }> =>
         event.type === "relationship" && event.value.relationship === "followers");
     expect(followers).toHaveLength(2);
   });
@@ -316,9 +315,7 @@ describe("collectTarget orchestration", () => {
   });
 
   it("reports FAILED when every requested collection errors after a successful profile", async () => {
-    const provider = targetProvider({
-      followersPages: undefined,
-    });
+    const provider = targetProvider();
     (provider as unknown as {
       fetchFollowersPage: ReturnType<typeof vi.fn>;
     }).fetchFollowersPage.mockRejectedValue(

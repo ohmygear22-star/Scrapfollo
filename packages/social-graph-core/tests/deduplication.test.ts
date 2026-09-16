@@ -86,18 +86,23 @@ function base(input: {
   platform?: "instagram" | "x";
   sourceUserId?: string;
   relationship?: RelationshipType;
-  platformUserId?: string;
+  platformUserId?: string | undefined;
   username?: string;
   stableUserIds?: boolean;
 } = {}) {
+  const { platformUserId, username, ...rest } = {
+    platformUserId: "42" as string | undefined,
+    username: "User" as string,
+    ...input,
+  };
   return {
     platform: "instagram" as const,
     sourceUserId: "source-id",
     relationship: "followers" as const,
-    platformUserId: "42",
-    username: "User",
+    username,
     stableUserIds: false,
-    ...input,
+    ...rest,
+    ...(platformUserId === undefined ? {} : { platformUserId }),
   };
 }
 

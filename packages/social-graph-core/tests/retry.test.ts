@@ -347,7 +347,7 @@ describe("retry wiring through collection operations", () => {
       fetchFollowingPage: vi.fn(),
     };
 
-    const profile = await resolveProfile(request, provider, { retry: fastRetry });
+    const profile = await resolveProfile(request, provider, fastRetry);
 
     expect(calls).toBe(2);
     expect(profile.platformUserId).toBe("id-1");
