@@ -80,16 +80,23 @@ describe("resolveProfile", () => {
     });
   });
 
-  it("forwards tracing and cancellation context", async () => {
+  it("forwards tracing context and rejects an aborted signal before invoking the provider", async () => {
     const provider = providerFor("instagram");
-    const signal = AbortSignal.abort();
+    const controller = new AbortController();
 
-    await resolveProfile({ ...request, signal }, provider);
+    await resolveProfile({ ...request, signal: controller.signal }, provider);
 
     expect(provider.resolveProfile).toHaveBeenCalledWith(
       { platform: "instagram", username: "target" },
-      { runId: "run-1", targetId: "target-1", signal },
+      { runId: "run-1", targetId: "target-1", signal: controller.signal },
     );
+
+    const abortedProvider = providerFor("instagram");
+    await expect(resolveProfile(
+      { ...request, signal: AbortSignal.abort() },
+      abortedProvider,
+    )).rejects.toMatchObject({ name: "AbortError" });
+    expect(abortedProvider.resolveProfile).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported lookup before invoking the provider", async () => {

@@ -2,6 +2,7 @@ import type { CollectRelationshipRequest } from "../contracts/collection.js";
 import type { ProviderProfile, SocialGraphProvider } from "../contracts/provider.js";
 import { CollectionError } from "../errors/collection-error.js";
 import { normalizeProviderError } from "../errors/normalize-error.js";
+import { isAbortError } from "../retry/abortable-delay.js";
 import { retryOperation } from "../retry/retry-operation.js";
 import type { RetryOptions } from "../retry/retry-policy.js";
 
@@ -50,6 +51,7 @@ export async function resolveProfile(
       },
     );
   } catch (error) {
+    if (isAbortError(error)) throw error;
     throw normalizeProviderError(error, context);
   }
 

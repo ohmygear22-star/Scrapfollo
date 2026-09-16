@@ -12,6 +12,7 @@ import { normalizeProviderError } from "../errors/normalize-error.js";
 import { normalizeRelationship } from "../normalization/normalize-relationship.js";
 import { ExactDeduplicator } from "../deduplication/exact-deduplicator.js";
 import { relationshipDedupeKey } from "../deduplication/relationship-key.js";
+import { isAbortError } from "../retry/abortable-delay.js";
 import { retryOperation } from "../retry/retry-operation.js";
 import type { RetryOptions } from "../retry/retry-policy.js";
 import { PaginationState, PaginationStateError } from "./pagination-state.js";
@@ -81,6 +82,15 @@ export async function* collectRelationships(
     ? provider.fetchFollowersPage.bind(provider)
     : provider.fetchFollowingPage.bind(provider);
 
+  const callerSignal = request.signal;
+  const internalController = new AbortController();
+  const internalSignal = internalController.signal;
+  const forwardAbort = () => internalController.abort();
+  if (callerSignal !== undefined) {
+    if (callerSignal.aborted) internalController.abort();
+    callerSignal.addEventListener("abort", forwardAbort);
+  }
+
   try {
     do {
       const page = await retryOperation(
@@ -93,11 +103,11 @@ export async function* collectRelationships(
           {
             runId: request.runId,
             targetId: request.targetId,
-            ...(request.signal === undefined ? {} : { signal: request.signal }),
+            signal: internalSignal,
           },
         ),
         {
-          ...(request.signal === undefined ? {} : { signal: request.signal }),
+          signal: internalSignal,
           ...(options.retry ?? {}),
           hooks: {
             onAttempt: () => {
@@ -181,7 +191,30 @@ export async function* collectRelationships(
 
       cursor = pagination.nextCursorFor(page, provider.capabilities.pagination);
     } while (cursor !== undefined);
+
+    yield {
+      type: "summary",
+      value: {
+        ...summaryBase(request, sourceProfile),
+        metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
+        completeness: { complete: true, terminationReason: "SOURCE_EXHAUSTED" },
+      },
+    };
   } catch (error) {
+    if (isAbortError(error)) {
+      if (callerSignal?.aborted) {
+        yield {
+          type: "summary",
+          value: {
+            ...summaryBase(request, sourceProfile),
+            metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
+            completeness: { complete: false, terminationReason: "ABORTED" },
+          },
+        };
+      }
+      return;
+    }
+
     if (error instanceof PaginationStateError) {
       yield summaryFor(request, sourceProfile, new CollectionError({
         category: "PAGINATION_FAILED",
@@ -199,16 +232,12 @@ export async function* collectRelationships(
     });
     yield summaryFor(request, sourceProfile, normalized.toPublicError(), pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters);
     return;
+  } finally {
+    if (callerSignal !== undefined) {
+      callerSignal.removeEventListener("abort", forwardAbort);
+    }
+    internalController.abort();
   }
-
-  yield {
-    type: "summary",
-    value: {
-      ...summaryBase(request, sourceProfile),
-      metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved, requestCounters),
-      completeness: { complete: true, terminationReason: "SOURCE_EXHAUSTED" },
-    },
-  };
 }
 
 function summaryFor(

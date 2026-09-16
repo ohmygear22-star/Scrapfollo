@@ -40,6 +40,7 @@ export {
   relationshipDedupeKey,
 } from "./deduplication/relationship-key.js";
 export type { RelationshipDedupeKeyInput } from "./deduplication/relationship-key.js";
+export { abortableDelay, createAbortError, isAbortError } from "./retry/abortable-delay.js";
 export { retryOperation } from "./retry/retry-operation.js";
 export type {
   RetryFailureInfo,

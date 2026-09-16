@@ -10,7 +10,12 @@ export default [
     languageOptions: {
       parser: tsParser,
       parserOptions: { sourceType: "module" },
-      globals: { AbortSignal: "readonly", setTimeout: "readonly" },
+      globals: {
+        AbortController: "readonly",
+        AbortSignal: "readonly",
+        clearTimeout: "readonly",
+        setTimeout: "readonly",
+      },
     },
     plugins: { "@typescript-eslint": tseslint },
     rules: tseslint.configs.recommended.rules,

@@ -1,4 +1,5 @@
 import { normalizeProviderError } from "../errors/normalize-error.js";
+import { abortableDelay } from "./abortable-delay.js";
 import { DEFAULT_RETRY_POLICY } from "./retry-policy.js";
 import type { RetryOptions, RetryPolicy } from "./retry-policy.js";
 
@@ -39,10 +40,11 @@ export async function retryOperation<T>(
   options: RetryOperationOptions = {},
 ): Promise<T> {
   const policy = options.policy ?? DEFAULT_RETRY_POLICY;
-  const sleep = options.sleep ?? defaultSleep;
+  const sleep = options.sleep ?? abortableDelay;
   const random = options.random ?? Math.random;
 
   for (let attempt = 1; ; attempt += 1) {
+    options.signal?.throwIfAborted();
     options.hooks?.onAttempt?.({ attempt });
     try {
       return await operation(attempt);
@@ -81,8 +83,3 @@ function retryAfterMsOf(error: unknown): number {
     : 0;
 }
 
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
