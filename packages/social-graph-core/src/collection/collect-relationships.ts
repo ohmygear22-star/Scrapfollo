@@ -53,6 +53,20 @@ export async function* collectRelationships(
     return;
   }
 
+  if (
+    request.maxResults !== undefined
+    && (!Number.isSafeInteger(request.maxResults) || request.maxResults < 1)
+  ) {
+    yield summaryFor(request, sourceProfile, {
+      category: "INVALID_INPUT",
+      message: "maxResults must be a positive safe integer",
+      retryable: false,
+      platform: request.platform,
+      targetId: request.targetId,
+    });
+    return;
+  }
+
   const pagination = new PaginationState();
   const deduplicator = new ExactDeduplicator();
   let position = 0;
@@ -78,6 +92,7 @@ export async function* collectRelationships(
         },
       );
       pagination.recordPage(page);
+      let uniqueRowAfterMax = false;
 
       for (const item of page.items) {
         if (item.platform !== provider.platform) {
@@ -98,10 +113,18 @@ export async function* collectRelationships(
           username: item.username,
           stableUserIds: provider.capabilities.stableUserIds,
         });
-        if (!deduplicator.accept(key)) {
+        if (deduplicator.has(key)) {
           duplicatesRemoved += 1;
           continue;
         }
+        if (
+          request.maxResults !== undefined
+          && uniqueItemsProduced >= request.maxResults
+        ) {
+          uniqueRowAfterMax = true;
+          break;
+        }
+        deduplicator.accept(key);
 
         position += 1;
         uniqueItemsProduced += 1;
@@ -115,6 +138,24 @@ export async function* collectRelationships(
             scrapedAt: (options.now ?? (() => new Date()))().toISOString(),
           }),
         };
+      }
+
+      if (
+        request.maxResults !== undefined
+        && uniqueItemsProduced >= request.maxResults
+      ) {
+        if (page.hasMore || uniqueRowAfterMax) {
+          yield {
+            type: "summary",
+            value: {
+              ...summaryBase(request, sourceProfile),
+              metrics: metricsFor(pagination, uniqueItemsProduced, duplicatesRemoved),
+              completeness: { complete: false, terminationReason: "MAX_LIMIT_REACHED" },
+            },
+          };
+          return;
+        }
+        break;
       }
 
       cursor = pagination.nextCursorFor(page, provider.capabilities.pagination);
