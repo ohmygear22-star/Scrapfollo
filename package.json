@@ -11,7 +11,8 @@
     "typecheck": "node \"$npm_execpath\" -r typecheck && tsc -p tsconfig.check.json --noEmit",
     "lint": "eslint . --max-warnings=0",
     "test": "node \"$npm_execpath\" -r test",
-    "test:integration": "vitest run tests/integration"
+    "test:integration": "vitest run tests/integration",
+    "test:spike": "vitest run tests/spike"
   },
   "devDependencies": {
     "@eslint/js": "9.35.0",
