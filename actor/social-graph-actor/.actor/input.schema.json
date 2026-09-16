@@ -12,54 +12,76 @@
       "items": {
         "title": "Target",
         "type": "object",
-        "required": ["platform", "username"],
+        "required": [
+          "platform",
+          "username"
+        ],
         "properties": {
           "platform": {
             "title": "Platform",
             "type": "string",
-            "enum": ["instagram", "x", "tiktok"]
+            "enum": [
+              "instagram",
+              "x",
+              "tiktok"
+            ],
+            "description": "One of instagram, x, or tiktok"
           },
           "username": {
             "title": "Username",
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Public username; leading @ is stripped"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A single collection target"
       }
     },
     "scrapeType": {
       "title": "Scrape type",
       "type": "string",
-      "enum": ["followers", "following", "both"],
-      "default": "followers"
+      "enum": [
+        "followers",
+        "following",
+        "both"
+      ],
+      "default": "followers",
+      "description": "Which relationship lists to collect"
     },
     "maxFollowers": {
       "title": "Maximum followers",
       "type": "integer",
       "minimum": 1,
-      "maximum": 100000
+      "maximum": 100000,
+      "description": "Upper bound on unique follower rows"
     },
     "maxFollowing": {
       "title": "Maximum following",
       "type": "integer",
       "minimum": 1,
-      "maximum": 100000
+      "maximum": 100000,
+      "description": "Upper bound on unique following rows"
     },
     "concurrency": {
       "title": "Concurrency",
       "type": "integer",
       "minimum": 1,
       "maximum": 8,
-      "default": 2
+      "default": 2,
+      "description": "Maximum targets collected in parallel"
     },
     "eventBufferSize": {
       "title": "Event buffer size",
       "type": "integer",
       "minimum": 1,
-      "maximum": 64
+      "maximum": 64,
+      "description": "Maximum events buffered ahead of the consumer"
     }
   },
-  "required": ["targets", "scrapeType"],
+  "required": [
+    "targets",
+    "scrapeType"
+  ],
   "additionalProperties": false
 }
