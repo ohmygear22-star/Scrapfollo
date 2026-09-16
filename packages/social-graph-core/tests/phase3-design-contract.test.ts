@@ -16,6 +16,11 @@ describe("Phase 3 spike design contract", () => {
 
     for (const term of [
       "stop and report first",
+      "no retry, no alternate endpoint, no proxy",
+      "halts immediately",
+      "≤ 3 requests TOTAL",
+      "≤ 4 requests",
+      "Single-shot yields only to an",
       "CAUGHT",
       "SOFT_LIMITED",
       "NOT_FOUND",

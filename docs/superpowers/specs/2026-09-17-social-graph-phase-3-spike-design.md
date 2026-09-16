@@ -23,7 +23,7 @@ Every probe response is classified exactly once:
 
 | Verdict | Signals | Consequence |
 | --- | --- | --- |
-| `OK` | HTTP 200 with parseable follower/following identity data | continue within budget |
+| `OK` | Per-step success: RESOLVE step = 200 + expected profile signals (counts / secUid, no login wall); LIST step = 200 + parseable follower/following identity rows | continue within budget |
 | `CAUGHT` | HTTP 401/403; 429 with block headers; redirect to login; challenge/CAPTCHA page; 200 with login-wall HTML instead of data; empty payload with block signatures | **platform spike halts immediately — no retry, no alternate endpoint, no proxy — report with evidence** |
 | `SOFT_LIMITED` | 429/5xx with `Retry-After` and no block signature | treat as caught (conservative default; owner may authorize one polite retry) |
 | `NOT_FOUND` | 404 / profile-missing payload | pick a different PUBLIC test profile (does not count as caught; one re-pick allowed) |
@@ -34,11 +34,13 @@ unit-tested in P3-T2 before any live request exists.
 
 ## 3. Spike protocol (per platform)
 
-- **Request budget**: Instagram ≤ 3 requests total; TikTok ≤ 4 (1 profile
-  resolve + up to 3 list pages). The budget is enforced in code — the probe
-  tool refuses to exceed it.
-- **Single-shot**: each request is sent once; any non-`OK`/`NOT_FOUND`
-  verdict ends the platform spike.
+- **Request budget**: Instagram ≤ 3 requests TOTAL; TikTok ≤ 4 requests
+  TOTAL (resolve + list pages + any NOT_FOUND re-pick all count against the
+  same total). The budget is enforced in code — the probe tool refuses to
+  exceed it.
+- **Single-shot**: each request is sent once; any verdict other than
+  `OK`/`NOT_FOUND` ends the platform spike. Single-shot yields only to an
+  explicit owner instruction (e.g. a post-CAUGHT polite retry).
 - **No circumvention**: real browser-like headers, but no header rotation
   between attempts, no cookies, no proxies, no signature forging beyond
   what a plain browser GET/POST carries. This is deliberately the weakest
