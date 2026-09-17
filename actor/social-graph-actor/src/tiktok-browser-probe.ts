@@ -125,6 +125,7 @@ export type TikTokBrowserEvidence = {
   followers: ListSummary | null;
   following: ListSummary | null;
   apiUrls: string[];
+  cookieNamesAfterLoad?: string[];
   finishedAt: string;
 };
 
@@ -160,6 +161,7 @@ export async function runTikTokBrowserProbe(
     followers: null,
     following: null,
     apiUrls: [],
+    cookieNamesAfterLoad: [],
     finishedAt: new Date().toISOString(),
   };
   const captured: Array<{ url: string; json: unknown }> = [];
@@ -198,11 +200,13 @@ export async function runTikTokBrowserProbe(
     await page.waitForTimeout(5_000);
     evidence.profileLoaded = true;
 
-    evidence.loginDetected = await page.evaluate(() => {
-      const loginButton = Array.from(document.querySelectorAll('a,button,[data-e2e]'))
-        .some((el) => /^log in$/i.test((el.textContent ?? "").trim()));
-      return !loginButton;
-    });
+    evidence.loginDetected = await page.evaluate(() =>
+      document.querySelector('[data-e2e="profile-icon"], [data-e2e="nav-upload"]') !== null);
+    evidence.cookieNamesAfterLoad = await page.evaluate(() =>
+      document.cookie.split(";")
+        .map((c) => (c.split("=")[0] ?? "").trim())
+        .filter((n) => n !== "")
+        .sort());
 
     const visitListPage = async (
       listType: "followers" | "following",
@@ -225,8 +229,36 @@ export async function runTikTokBrowserProbe(
       }
     };
 
-    await visitListPage("following");
-    await visitListPage("followers");
+    // Try the modal path first: TikTok exposes data-e2e hooks on the counters.
+    await page.goto(`https://www.tiktok.com/@${target}`, {
+      waitUntil: "domcontentloaded",
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    await page.waitForTimeout(4_000);
+    for (const hook of ["followers-count", "following-count"]) {
+      const counter = page.locator(`[data-e2e="${hook}"]`).first();
+      if (await counter.count()) {
+        await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
+        await page.waitForTimeout(5_000);
+        const match = captured.find((c) =>
+          c.url.includes(`listType=${hook === "followers-count" ? "followers" : "following"}`));
+        if (match !== undefined) {
+          const summary = summarizeListPayload(match.url, match.json);
+          if (hook === "followers-count") {
+            evidence.followers = summary;
+          } else {
+            evidence.following = summary;
+          }
+        }
+        await page.keyboard.press("Escape").catch(() => undefined);
+        await page.waitForTimeout(1_000);
+      }
+    }
+
+    if (evidence.followers === null && evidence.following === null) {
+      await visitListPage("following");
+      await visitListPage("followers");
+    }
     pageScreenshotCache = page.screenshot({ fullPage: false }).catch(() => null);
 
   } finally {
