@@ -149,7 +149,8 @@ export async function runResidentialProbe(
       classified = classifyProbeResponse({ step, status, headers, bodySnippet: body });
     } catch (error) {
       const safe = String(error).replace(/apify_api_[A-Za-z0-9]+/g, "apify_api_[REDACTED]");
-      classified = { verdict: "NETWORK_ERROR", reason: safe.slice(0, 160) };
+      // curl's actual error line sits at the END of the execFile message.
+      classified = { verdict: "NETWORK_ERROR", reason: safe.slice(-220) };
     }
     entries.push({
       platform, rung: 3, step, url,
