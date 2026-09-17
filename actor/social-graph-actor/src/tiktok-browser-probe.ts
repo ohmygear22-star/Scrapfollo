@@ -85,6 +85,16 @@ export type ListSummary = {
   sample: Array<{ uniqueId: string | null; nickname: string | null }>;
 };
 
+export function summarizeListText(url: string, text: string): ListSummary {
+  let json: unknown = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // empty or truncated body
+  }
+  return summarizeListPayload(url, json);
+}
+
 export function summarizeListPayload(url: string, json: unknown): ListSummary {
   const body = json !== null && typeof json === "object" ? json as Record<string, unknown> : {};
   const users = Array.isArray(body["userInfoList"])
@@ -125,7 +135,9 @@ export type TikTokBrowserEvidence = {
   followers: ListSummary | null;
   following: ListSummary | null;
   apiUrls: string[];
+  sessionCookieAlive?: boolean;
   cookieNamesAfterLoad?: string[];
+  listCaptures?: Array<{ url: string; status: number; textHead: string }>;
   finishedAt: string;
 };
 
@@ -161,12 +173,13 @@ export async function runTikTokBrowserProbe(
     followers: null,
     following: null,
     apiUrls: [],
+    sessionCookieAlive: false,
     cookieNamesAfterLoad: [],
+    listCaptures: [],
     finishedAt: new Date().toISOString(),
   };
-  const captured: Array<{ url: string; json: unknown }> = [];
+  const captured: Array<{ url: string; text: string; status: number }> = [];
   let listResponses = 0;
-  let pageScreenshotCache: Promise<Uint8Array | null> | null = null;
 
   try {
     const context = await browser.newContext({
@@ -186,11 +199,8 @@ export async function runTikTokBrowserProbe(
       }
       if (!/api\/user\/list/.test(url)) return;
       listResponses += 1;
-      try {
-        captured.push({ url, json: await response.json() });
-      } catch {
-        captured.push({ url, json: null });
-      }
+      const text = await response.text().catch(() => "");
+      captured.push({ url, text: text.slice(0, 400), status: response.status() });
     });
 
     await page.goto(`https://www.tiktok.com/@${target}`, {
@@ -207,6 +217,9 @@ export async function runTikTokBrowserProbe(
         .map((c) => (c.split("=")[0] ?? "").trim())
         .filter((n) => n !== "")
         .sort());
+    // Definitive session check: context cookies include httpOnly ones.
+    const contextCookies = await context.cookies();
+    evidence.sessionCookieAlive = contextCookies.some((c) => c.name === "sessionid");
 
     const visitListPage = async (
       listType: "followers" | "following",
@@ -217,10 +230,9 @@ export async function runTikTokBrowserProbe(
         timeout: PROBE_TIMEOUT_MS,
       });
       await page.waitForTimeout(6_000);
-      const match = captured.slice(before).find((c) => c.url.includes(`listType=${listType}`))
-        ?? captured.slice(before)[0];
+      const match = captured.slice(before).filter((c) => c.url.includes(`listType=${listType}`)).at(-1);
       if (match !== undefined) {
-        const summary = summarizeListPayload(match.url, match.json);
+        const summary = summarizeListText(match.url, match.text);
         if (listType === "followers") {
           evidence.followers = summary;
         } else {
@@ -240,10 +252,10 @@ export async function runTikTokBrowserProbe(
       if (await counter.count()) {
         await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
         await page.waitForTimeout(5_000);
-        const match = captured.find((c) =>
-          c.url.includes(`listType=${hook === "followers-count" ? "followers" : "following"}`));
+        const match = captured.filter((c) =>
+          c.url.includes(`listType=${hook === "followers-count" ? "followers" : "following"}`)).at(-1);
         if (match !== undefined) {
-          const summary = summarizeListPayload(match.url, match.json);
+          const summary = summarizeListText(match.url, match.text);
           if (hook === "followers-count") {
             evidence.followers = summary;
           } else {
@@ -259,19 +271,20 @@ export async function runTikTokBrowserProbe(
       await visitListPage("following");
       await visitListPage("followers");
     }
-    pageScreenshotCache = page.screenshot({ fullPage: false }).catch(() => null);
+    evidence.listCaptures = captured.map((c) => ({
+      url: maskSignedUrl(c.url),
+      status: c.status,
+      textHead: c.text.slice(0, 200),
+    }));
+    const shot = await page.screenshot({ fullPage: false }).catch(() => null);
+    if (shot !== null) {
+      await keyValueStore.setValue("TIKTOK_SCREENSHOT", shot);
+    }
 
   } finally {
     await browser.close().catch(() => undefined);
   }
 
-  if (listResponses === 0 && evidence.profileLoaded) {
-    // Diagnostic screenshot when the click never triggered a list request.
-    const screenshot = await (pageScreenshotCache ?? Promise.resolve(null));
-    if (screenshot !== null) {
-      await keyValueStore.setValue("TIKTOK_SCREENSHOT", screenshot);
-    }
-  }
   await keyValueStore.setValue("TIKTOK_BROWSER_EVIDENCE", evidence);
 
   const final = !evidence.profileLoaded
