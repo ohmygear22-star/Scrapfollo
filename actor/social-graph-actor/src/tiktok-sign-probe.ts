@@ -107,8 +107,10 @@ export async function runTikTokSignProbe(
 
   const curl = async (url: string, extraHeaders: string[] = []): Promise<CurlResponse> => {
     requests += 1;
+    const headerFile = `/tmp/tt-h-${requests}`;
+    const bodyFile = `/tmp/tt-b-${requests}`;
     const { stdout } = await execFileAsync("curl", [
-      "-sS", "--max-time", "25", "-D", "-", "--compressed",
+      "-sS", "--max-time", "25", "-D", headerFile, "-o", bodyFile, "--compressed",
       "-H", `user-agent: ${USER_AGENT}`,
       "-H", "accept: application/json, text/plain, */*",
       "-H", "accept-language: en-US,en;q=0.9",
@@ -118,13 +120,20 @@ export async function runTikTokSignProbe(
       "--proxy-user", `${proxyUser}:${password}`,
       url,
     ], { maxBuffer: 20 * 1024 * 1024 });
-    const split = stdout.indexOf("\r\n\r\n");
-    const headerBlock = split === -1 ? stdout : stdout.slice(0, split);
-    const body = split === -1 ? "" : stdout.slice(split + 4);
+    void stdout;
+    const { readFile, rm } = await import("node:fs/promises");
+    const [headerText, body] = await Promise.all([
+      readFile(headerFile, "utf8").catch(() => ""),
+      readFile(bodyFile, "utf8").catch(() => ""),
+    ]);
+    void rm(headerFile, { force: true });
+    void rm(bodyFile, { force: true });
     const headers: Record<string, string> = {};
     const setCookies: string[] = [];
     let status = 0;
-    for (const line of headerBlock.split("\r\n")) {
+    for (const rawLine of headerText.split(/\r\n|\n/)) {
+      const line = rawLine.trimEnd();
+      if (line === "") continue;
       const statusMatch = /^HTTP\/[\d.]+ (\d+)/.exec(line);
       if (statusMatch !== null) {
         status = Number(statusMatch[1]);
@@ -156,6 +165,9 @@ export async function runTikTokSignProbe(
   const profile = await curl(`https://www.tiktok.com/@${target}`);
   const secUid = extractSecUid(profile.body);
   msToken = extractMsTokenFromSetCookies(profile.setCookies) ?? profile.headers["x-ms-token"];
+  const harvestToken = (response: CurlResponse): void => {
+    msToken = extractMsTokenFromSetCookies(response.setCookies) ?? response.headers["x-ms-token"] ?? msToken;
+  };
   entries.push({
     step: "profile",
     url: `https://www.tiktok.com/@${target}`,
@@ -176,7 +188,7 @@ export async function runTikTokSignProbe(
   // x-ms-token on empty-body responses.
   if (msToken === undefined && requests < BUDGET) {
     const warmup = await curl(buildListUrl({ secUid, listType: "followers", count: 30, cursor: 0 }));
-    msToken = extractMsTokenFromSetCookies(warmup.setCookies) ?? warmup.headers["x-ms-token"];
+    harvestToken(warmup);
     entries.push({
       step: "token-warmup",
       url: maskSecrets(buildListUrl({ secUid, listType: "followers", count: 30, cursor: 0 })),
@@ -201,6 +213,7 @@ export async function runTikTokSignProbe(
     let response: CurlResponse;
     try {
       response = await curl(url, extraHeaders);
+      harvestToken(response);
       classification = classifyListResponse({ status: response.status, body: response.body });
       if (classification === "VALIDATED") {
         final = `LIST_VALIDATED:${listType}`;
