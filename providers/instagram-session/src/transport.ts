@@ -77,7 +77,11 @@ export class InstagramSessionTransport {
         ...(request.signal === undefined ? {} : { signal: request.signal }),
         headers: {
           accept: "*/*",
+          "accept-encoding": "gzip, deflate, br",
           "accept-language": "en-US,en;q=0.9",
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-dest": "empty",
           "user-agent": this.#config.userAgent,
           "x-ig-app-id": this.#config.appId,
           "x-requested-with": "XMLHttpRequest",
