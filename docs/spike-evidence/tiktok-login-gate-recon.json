@@ -1,0 +1,21 @@
+{
+  "task": "TikTok Option-A recon (owner: Go for A, 2026-09-17)",
+  "date": "2026-09-17",
+  "owner_browser_state": "Singapore VPN active (TikTok HK-discontinued bypass); anonymous, not logged in",
+  "findings": [
+    {
+      "finding": "follower/following lists are LOGIN-GATED on web, not only signature-gated",
+      "evidence": "clicking the Followers count on @khaby.lame anonymously pops a 'Log in to TikTok' modal; zero /api/user/list requests fired; direct /@user/following URL redirects anonymous users to /foryou; profile page counts (81 following / 162.9M followers) remain visible anonymously"
+    },
+    {
+      "finding": "current signature stack observed on live web: X-Dynosaur + X-Gnarly + msToken (X-Bogus=1 placeholder) on webcast API calls",
+      "implication": "static X-Bogus ports target the OLD stack; any signing must run TikTok's current JS (browser context)"
+    },
+    {
+      "finding": "davidteather/TikTok-Api (actively maintained) REMOVED followers()/following() methods entirely",
+      "implication": "leading free library confirms the wall; commercial list access = logged-in device farms (scraptik)"
+    }
+  ],
+  "refined_option_A_architecture": "IG-pattern extension: owner logs a TikTok account into the in-app browser (VPN) -> session cookies harvested -> actor runs headless Chromium (datacenter proxy, pages proven 200) with the session -> collection via real page context (app UI automation or page-context fetch; TikTok's own JS signs X-Gnarly/msToken automatically). Counts stay anonymous+free. Risks: TikTok detection of headless/IP-hopped sessions is fiercer than IG; first bounded live test decides.",
+  "next_step": "owner TikTok login in IAB -> cookie harvest -> headless-collector probe build"
+}
