@@ -1,0 +1,68 @@
+{
+  "task": "InstagramSessionProvider implementation + live smoke (P3-T6 follow-through)",
+  "date": "2026-09-17",
+  "commits": ["T1 scaffold/config/classify", "T2 transport+provider", "T3 contract suite", "T4 seed-first + Sec-Fetch fixes"],
+  "final_head": "e759a5a",
+  "package": "providers/instagram-session (@social-graph/instagram-session-provider)",
+  "tests": "65 package tests (config 12, classify 12, transport 9, provider 20, contract 6+6) + full workspace 294 green; typecheck/lint/build/diff-check clean",
+  "capabilities": {
+    "profileLookup": true,
+    "followerCount": true,
+    "followingCount": true,
+    "followerIdentities": false,
+    "followingIdentities": true,
+    "pagination": true,
+    "stableUserIds": true
+  },
+  "live_smoke_final": {
+    "command": "node spike/ig-session-smoke.mjs therock 232192182",
+    "origin": "droplet 152.42.220.26 (sgp1 IP)",
+    "resolveProfile": {
+      "ms": 1110,
+      "username": "therock",
+      "platformUserId": "232192182",
+      "followerCount": 381390872,
+      "followingCount": 382,
+      "isVerified": true,
+      "isPrivate": false
+    },
+    "fetchFollowingPage": {
+      "ms": 3670,
+      "items": 12,
+      "hasMore": true,
+      "serverCursor": "2 chars, opaque, server-issued next_max_id",
+      "sample": ["4457986801:jimmycarr", "321154855:jeffnippard", "54700828792:therok.loveeee"]
+    },
+    "verdict": "OK — provider validated end-to-end on live Instagram"
+  },
+  "discoveries_during_bringup": [
+    {
+      "finding": "REST username-resolution family is dead for owned sessions",
+      "evidence": [
+        "/api/v1/users/web_profile_info/ -> 429 twice (spike + smoke1; two different IPs)",
+        "/api/v1/users/search/?q=&count=10 -> 400",
+        "/api/v1/users/web_search/?q=&context=blended -> 404 (anonymous HTML shell)"
+      ],
+      "resolution": "seed-first resolution: constructor seeds {username -> platformUserId} + proven /api/v1/users/{id}/info/ call; seeds harvested once per target from the logged-in browser's own app requests"
+    },
+    {
+      "finding": "Instagram validates Sec-Fetch browser-fingerprint headers on friendships endpoints",
+      "evidence": "A/B live isolation from droplet: node fetch without sec-fetch-* -> 400; identical request + sec-fetch-site/mode/dest + accept-encoding -> 200; curl (no sec-fetch) had worked earlier, header set interaction is not fully mapped",
+      "resolution": "transport permanently sends sec-fetch-site: same-origin, sec-fetch-mode: cors, sec-fetch-dest: empty, accept-encoding: gzip, deflate, br (owner-approved rung-1 fake-header scope)"
+    },
+    {
+      "finding": "Server cursor for following pages can be short/opaque (2 chars), not a pk",
+      "resolution": "provider prefers server next_max_id and falls back to last-item pk; cursor treated as opaque per contract; multi-page continuation to be proven in the benchmark task"
+    },
+    {
+      "finding": "Follower count churn visible same-day (381391432 -> 381390876 -> 381390872 across ~2h) — daily count capture will see real deltas",
+      "resolution": "none needed; confirms the count-only monitoring model"
+    }
+  ],
+  "live_request_tally_bringup": {
+    "total": 9,
+    "breakdown": "smoke1 (web_profile 429 + search 400) + web_search probe (404) + smoke2 (info 200 + following 400) + isolation A/B (400/200) + smoke3 final (info 200 + following 200)",
+    "note": "all bounded, each batch reported before the next"
+  },
+  "security": "cookie values only in /opt/scrapfollo/.env (0600) and env vars; error messages carry method+pathname+status only; transport unit tests assert cookie material and URLs never appear in thrown errors; cursors logged as prefix+length only"
+}
