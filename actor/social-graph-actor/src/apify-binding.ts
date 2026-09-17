@@ -6,6 +6,7 @@ import type { DatasetWriter } from "./dataset-writer.js";
 import { ActorInputError } from "./input.js";
 import type { KeyValueStore } from "./key-value-store.js";
 import { runResidentialProbe } from "./probe-classify.js";
+import { runTikTokSignProbe } from "./tiktok-sign-probe.js";
 
 /**
  * The ONLY module allowed to import the Apify SDK (architecture-enforced).
@@ -31,14 +32,16 @@ function sdkKeyValueStore(): KeyValueStore {
   };
 }
 
-function isProbeInput(raw: unknown): raw is {
-  probe: { platform: "instagram" | "tiktok"; proxyUser?: unknown };
-} {
+type ProbeInput = {
+  probe: { platform: "instagram" | "tiktok" | "tiktok-sign"; proxyUser?: unknown; target?: unknown };
+};
+
+function isProbeInput(raw: unknown): raw is ProbeInput {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return false;
   const probe = (raw as { probe?: unknown }).probe;
   if (typeof probe !== "object" || probe === null) return false;
   const platform = (probe as { platform?: unknown }).platform;
-  return platform === "instagram" || platform === "tiktok";
+  return platform === "instagram" || platform === "tiktok" || platform === "tiktok-sign";
 }
 
 export function createApifyPlatform(): ActorPlatform {
@@ -55,11 +58,19 @@ export async function apifyMain(): Promise<void> {
   try {
     const input = await Actor.getInput();
     if (isProbeInput(input)) {
-      const proxyUser = typeof input.probe.proxyUser === "string" && input.probe.proxyUser !== ""
-        ? input.probe.proxyUser
-        : "auto,groups-RESIDENTIAL";
-      const result = await runResidentialProbe(input.probe.platform, sdkKeyValueStore(), proxyUser);
-      log.info("residential probe finished", { platform: input.probe.platform, proxyUser, ...result });
+      if (input.probe.platform === "tiktok-sign") {
+        const target = typeof input.probe.target === "string" && input.probe.target.trim() !== ""
+          ? input.probe.target.trim().replace(/^@/, "")
+          : "khaby.lame";
+        const result = await runTikTokSignProbe(target, sdkKeyValueStore(), "auto");
+        log.info("tiktok sign probe finished", { target, ...result });
+      } else {
+        const proxyUser = typeof input.probe.proxyUser === "string" && input.probe.proxyUser !== ""
+          ? input.probe.proxyUser
+          : "auto,groups-RESIDENTIAL";
+        const result = await runResidentialProbe(input.probe.platform, sdkKeyValueStore(), proxyUser);
+        log.info("residential probe finished", { platform: input.probe.platform, proxyUser, ...result });
+      }
     } else {
       await runActor(input, createApifyPlatform());
     }
