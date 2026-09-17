@@ -204,43 +204,31 @@ export async function runTikTokBrowserProbe(
       return !loginButton;
     });
 
-    const clickCount = async (label: "Followers" | "Following"): Promise<void> => {
-      const box = await page.evaluate((targetLabel) => {
-        for (const el of Array.from(document.querySelectorAll("h3,h2"))) {
-          const text = el.textContent ?? "";
-          if (!text.includes(targetLabel) || !/\d/.test(text)) continue;
-          const inner = Array.from(el.querySelectorAll("*"))
-            .find((s) => (s.textContent ?? "").trim() === targetLabel);
-          const anchor = inner ?? el;
-          const rect = anchor.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) continue;
-          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    const visitListPage = async (
+      listType: "followers" | "following",
+    ): Promise<void> => {
+      const before = captured.length;
+      await page.goto(`https://www.tiktok.com/@${target}/${listType}`, {
+        waitUntil: "domcontentloaded",
+        timeout: PROBE_TIMEOUT_MS,
+      });
+      await page.waitForTimeout(6_000);
+      const match = captured.slice(before).find((c) => c.url.includes(`listType=${listType}`))
+        ?? captured.slice(before)[0];
+      if (match !== undefined) {
+        const summary = summarizeListPayload(match.url, match.json);
+        if (listType === "followers") {
+          evidence.followers = summary;
+        } else {
+          evidence.following = summary;
         }
-        return null;
-      }, label);
-      if (box === null) return;
-      await page.mouse.click(box.x, box.y);
-      await page.waitForTimeout(4_500);
-      await page.keyboard.press("Escape");
-      await page.waitForTimeout(1_000);
+      }
     };
 
-    const beforeFollowers = captured.length;
-    await clickCount("Followers");
-    const followersResponse = captured.slice(beforeFollowers)
-      .find((c) => /listType=followers/.test(c.url) || captured.length === beforeFollowers + 1);
-    if (followersResponse !== undefined) {
-      evidence.followers = summarizeListPayload(followersResponse.url, followersResponse.json);
-    }
-
-    const beforeFollowing = captured.length;
-    await clickCount("Following");
-    const followingResponse = captured.slice(beforeFollowing)
-      .find((c) => /listType=following/.test(c.url) || captured.length === beforeFollowing + 1);
-    if (followingResponse !== undefined) {
-      evidence.following = summarizeListPayload(followingResponse.url, followingResponse.json);
-    }
+    await visitListPage("following");
+    await visitListPage("followers");
     pageScreenshotCache = page.screenshot({ fullPage: false }).catch(() => null);
+
   } finally {
     await browser.close().catch(() => undefined);
   }
