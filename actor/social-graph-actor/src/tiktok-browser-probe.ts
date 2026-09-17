@@ -79,6 +79,7 @@ export function parseCookieJar(rawJson: string): PlaywrightCookie[] {
 
 export type ListSummary = {
   url: string;
+  scene: string | null;
   total: number | null;
   itemCount: number;
   hasMore: boolean | null;
@@ -97,13 +98,14 @@ export function summarizeListText(url: string, text: string): ListSummary {
 
 export function summarizeListPayload(url: string, json: unknown): ListSummary {
   const body = json !== null && typeof json === "object" ? json as Record<string, unknown> : {};
-  const users = Array.isArray(body["userInfoList"])
-    ? body["userInfoList"] as Array<Record<string, unknown>>
-    : Array.isArray(body["users"])
-      ? body["users"] as Array<Record<string, unknown>>
-      : [];
+  // The web app's key is userList; older variants used userInfoList/users.
+  const users = ["userList", "userInfoList", "users"]
+    .map((key) => (Array.isArray(body[key]) ? body[key] as Array<Record<string, unknown>> : []))
+    .find((list) => list.length > 0) ?? [];
+  const sceneMatch = /[?&]scene=(\d+)/.exec(url);
   return {
     url: maskSignedUrl(url),
+    scene: sceneMatch?.[1] ?? null,
     total: typeof body["total"] === "number" ? body["total"] : null,
     itemCount: users.length,
     hasMore: typeof body["hasMore"] === "boolean" ? body["hasMore"] : null,
@@ -276,6 +278,12 @@ export async function runTikTokBrowserProbe(
     if (evidence.followers === null && evidence.following === null) {
       await visitListPage("following");
       await visitListPage("followers");
+    }
+    // Scene-based classification: the followers modal issues scene=67.
+    for (const summary of [evidence.followers, evidence.following]) {
+      if (summary !== null && summary.scene === "67" && summary !== evidence.followers) {
+        evidence.followers = summary;
+      }
     }
     evidence.listCaptures = captured.map((c) => ({
       url: maskSignedUrl(c.url),
