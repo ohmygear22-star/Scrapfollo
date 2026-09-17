@@ -1,0 +1,34 @@
+{
+  "task": "TikTok Option-A headless collector — bring-up checkpoint",
+  "date": "2026-09-17 (late)",
+  "head": "f3db34c (0.19 headful pending deploy — actor version slots full again)",
+  "verdict": "END-TO-END VIABLE — logged-in signed list data returned",
+  "proof": {
+    "run": "N1162cVhiVKelx1bc on build 0.18.1",
+    "sessionCookieAlive": "true (context.cookies check; TikTok does NOT clear the harvested session in headless + datacenter proxy)",
+    "list_captures": [
+      "200 user/list with user_is_login=true + X-Dynosaur/msToken/X-Bogus/X-Gnarly (app-signed), body has extra/logid + hasMore:false",
+      "200 same shape with minCursor",
+      "200 same shape with hasMore:true (non-empty list data)"
+    ],
+    "source": "data-e2e counter clicks (followers-count/following-count hooks) opening the app's own list modal"
+  },
+  "remaining_for_production": [
+    "stabilize: headful-under-xvfb build 0.19 written but undeployed (version-slot cleanup needed first)",
+    "listType capture matching (followers/following summaries stayed null though bodies arrived)",
+    "capture full bodies (userInfoList items with uniqueId/nickname) for contract mapping",
+    "hydration variance between runs (0.18 run1: 0 captures; run2: 3 captures) — headful expected to fix",
+    "then: TikTokSessionProvider package (same contract shape as instagram-session) + scheduler wiring"
+  ],
+  "traps_learned_this_session": [
+    "TikTok skeleton-serves pure headless (app never hydrates; dark skeleton screenshot)",
+    "document.cookie cannot see httpOnly cookies — use context.cookies() for session checks",
+    "python str.replace patches FAIL SILENTLY on mismatch — verify with grep assertions after every patch (the binding wiring no-op caused two stale-bundle deploys)",
+    "actor version slots cap at 10 — purge old versions before pushes (hit twice)",
+    "apify push --force needed after platform-side changes (version deletions)",
+    "KVS binary records come back as JSON {type:Buffer,data:[...]} — decode locally",
+    "playwright channel:'chrome' for apify -chrome images (registry version mismatch otherwise)",
+    "SQLite cookie flags are 0/1 ints — coerce to boolean for addCookies"
+  ],
+  "live_request_tally": "7 actor runs total today (browser probes; each = 1 browser session + organic page loads)"
+}
