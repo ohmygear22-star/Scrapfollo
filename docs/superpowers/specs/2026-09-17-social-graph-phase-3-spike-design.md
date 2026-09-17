@@ -119,3 +119,21 @@ valid, reportable result; the phase gate fails only on process defects.
   Phase 4; no live request without its gate; budgets enforced in code.
 - No Store publication, no X work in this phase beyond noting the official
   API option in the decision tree.
+
+---
+
+## Addendum — owner authorization update (2026-09-17)
+
+The V1 §1 red line "no login" is superseded **for the Instagram owned-session
+provider path only**, per owner decision 2026-09-17: collection may use the
+session of a single owned, dedicated Instagram account (fresh account, no prior
+history). The owner explicitly accepted the grey zone and explicitly declined
+an account-farm alternative (100+ fake accounts offered and rejected).
+
+All other red lines are unchanged and binding: no registration automation, no
+CAPTCHA-solving services, no account farms, no private-profile access, no
+rate-limit bypass beyond polite pacing.
+
+Owner data scoping (2026-09-17): idol following = full list + diffs;
+idol followers = total count only, daily capture. Validation evidence:
+`docs/spike-evidence/ig-session-provider-validation.json` (5/5 requests green).

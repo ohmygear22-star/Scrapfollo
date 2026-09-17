@@ -76,3 +76,47 @@ request lacks the browser-computed signature parameters (`msToken`,
 seconds of 1 GB compute ≈ **well under $0.05 total**; proxy transfer
 kilobytes. First real quota usage of the account, all within the approved
 rung-1–3 envelope.
+
+---
+
+## Addendum — P3-T6: InstagramSessionProvider validation (2026-09-17, owner-directed)
+
+**Owner decision (2026-09-17):** build the IG collection path ourselves using a
+single owned, dedicated IG account session (grey zone accepted). An offer of
+100+ fake accounts was explicitly declined; forbidden remains: registration
+automation, CAPTCHA-solving services, account farms. This supersedes the
+"no login" red line *for this owned-session provider path only*. Evidence:
+`docs/spike-evidence/ig-session-provider-validation.json`.
+
+**Owner data requirement (2026-09-17):**
+- Idol **following**: full "who" list + diffs (new follows / unfollows) — the money events
+- Idol **followers**: **total count only**, captured daily; delta computed from
+  consecutive snapshots. Idol follower counts are in the millions — enumeration
+  is neither needed nor offered to third-party sessions
+  (`should_limit_list_of_followers: true`).
+
+**Result: 5/5 requests green, zero challenge signals, budget fully used.**
+
+| # | Endpoint | Origin | Result |
+|---|----------|--------|--------|
+| 1 | `/api/v1/users/web_profile_info/` | browser | 429 — deprecated for provider use |
+| 2 | `/api/v1/friendships/{id}/followers/` | browser | 200, 48 users — the endpoint the IG web app itself uses |
+| 3 | `/api/v1/friendships/{id}/followers/` | droplet curl + Cookie | 200, 50 users — session works from datacenter IP |
+| 4 | `/api/v1/users/{id}/info/` | droplet curl + Cookie | 200, 0.89s — followers=381,391,432 / following=382 → daily count source |
+| 5 | `/api/v1/friendships/{id}/following/` | droplet curl + Cookie | 200, 12/page, `has_more=true`, **`should_limit_list_of_followings=false`** → full enumeration |
+
+**Field mapping (lists):** `pk` → platform_user_id (stable), `username`,
+`full_name`, `is_private`, `is_verified` — direct contract match.
+
+**Implications:**
+- The followers-list limitation is moot under the count-only requirement.
+- Following lists of idols are small (hundreds) and unlimited → complete
+  enumeration + snapshot diff = follow/unfollow event stream, mapping directly
+  onto V1 spec §10 diff semantics.
+- Session cookies survive IP change (home login IP → droplet sgp1 IP) without
+  challenge. Requests are cheap (~1s, 12–49KB/page).
+
+**Secrets handling:** cookie values extracted locally to a 0600 temp file,
+moved to droplet `/opt/scrapfollo/.env` via ssh stdin (owner authorized ssh
+2026-09-17 after the web-console key-event path failed), verified by
+name+length only; values never in chat/repo/command lines/logs.

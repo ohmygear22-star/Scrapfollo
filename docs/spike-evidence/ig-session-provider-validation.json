@@ -1,0 +1,92 @@
+{
+  "task": "P3-T6 InstagramSessionProvider viability spike",
+  "date": "2026-09-17",
+  "authorization": {
+    "owner_decision": "2026-09-17: build IG collection ourselves using a single owned, dedicated IG account session (grey zone accepted). Account farms (100+ fake accounts) offered by owner and explicitly declined together.",
+    "red_lines_remaining": [
+      "no registration automation",
+      "no CAPTCHA-solving services",
+      "no account farms",
+      "no private-profile access",
+      "no rate-limit bypass beyond polite pacing"
+    ]
+  },
+  "session_account": "siiukwan (fresh dedicated account: 0 posts / 0 followers / 0 following)",
+  "owner_data_requirement": "2026-09-17: idol FOLLOWING = full who-list + diffs (follow/unfollow events); idol FOLLOWERS = total count only, captured daily (idol follower counts are in the millions; enumeration neither needed nor offered to third-party sessions)",
+  "budget": { "allowed": 5, "used": 5 },
+  "requests": [
+    {
+      "ordinal": 1,
+      "origin": "in-app browser page fetch (owner home IP, real browser context)",
+      "method": "GET",
+      "url": "https://www.instagram.com/api/v1/users/web_profile_info/?username=siiukwan",
+      "headers_note": "x-ig-app-id 936619743392459 + x-requested-with; session cookies attached by browser",
+      "status": 429,
+      "verdict": "SOFT_LIMITED - endpoint heavily throttled; deprecated for provider use; not retried"
+    },
+    {
+      "ordinal": 2,
+      "origin": "in-app browser page fetch (owner home IP)",
+      "method": "GET",
+      "url": "https://www.instagram.com/api/v1/friendships/232192182/followers/?count=12&search_surface=follow_list_page",
+      "status": 200,
+      "users_returned": 48,
+      "verdict": "OK - endpoint confirmed as the one the IG web app itself uses (observed via performance.getEntriesByType while opening the followers modal)",
+      "fields": ["pk", "username", "full_name", "is_private", "is_verified"],
+      "fields_note": "pk = stable numeric platform_user_id; direct contract match"
+    },
+    {
+      "ordinal": 3,
+      "origin": "droplet 152.42.220.26 (sgp1 datacenter IP, curl)",
+      "method": "GET",
+      "url": "https://www.instagram.com/api/v1/friendships/232192182/followers/?count=12&search_surface=follow_list_page",
+      "headers": "Cookie: ds_user_id/sessionid/csrftoken referenced via .env shell vars (never literal); UA Safari macOS; x-ig-app-id 936619743392459",
+      "status": 200,
+      "users_returned": 50,
+      "elapsed_ms": 1385,
+      "response_bytes": 48789,
+      "response_headers_subset": ["x-ig-capacity-level: 3", "x-ig-server-region: ttx", "content-type: application/json; charset=utf-8"],
+      "sample_user": { "pk": "31860802598", "username": "53._.ricardo_", "full_name": "Abel Ricardo", "is_private": false, "is_verified": false },
+      "verdict": "OK - session cookie works from a datacenter IP with a plain HTTP client; cross-validated by identical first record vs browser-side request 2"
+    },
+    {
+      "ordinal": 4,
+      "origin": "droplet 152.42.220.26 (sgp1 datacenter IP, curl)",
+      "method": "GET",
+      "url": "https://www.instagram.com/api/v1/users/232192182/info/",
+      "status": 200,
+      "elapsed_ms": 888,
+      "summary": "user=therock followers=381391432 following=382 verified=true private=false",
+      "verdict": "OK - daily follower-count capture source; exact total, sub-second, no list limitation applies"
+    },
+    {
+      "ordinal": 5,
+      "origin": "droplet 152.42.220.26 (sgp1 datacenter IP, curl)",
+      "method": "GET",
+      "url": "https://www.instagram.com/api/v1/friendships/232192182/following/?count=12&search_surface=following_list_page",
+      "status": 200,
+      "users_returned": 12,
+      "elapsed_ms": 1226,
+      "response_bytes": 11986,
+      "summary": "page_size=12 has_more=true should_limit_list_of_followings=false should_limit_list_of_followers=false",
+      "sample_users": [
+        "4457986801:jimmycarr",
+        "54700828792:therok.loveeee",
+        "4685447183:eatmovies"
+      ],
+      "verdict": "OK - following lists are NOT limited for third-party sessions (unlike followers); full enumeration available via has_more pagination"
+    }
+  ],
+  "pagination_observations": {
+    "keys": ["has_more", "big_list", "page_size", "follow_ranking_token"],
+    "next_max_id": "absent on first page; requested count=12 returned 48-50 for followers, 12 for following; cursor mechanics (likely max_id=last pk) to be probed during provider implementation",
+    "note": "should_limit_list_of_followers=true observed on followers responses; moot under the count-only requirement"
+  },
+  "endpoint_map_for_requirement": {
+    "following_who_list": "/api/v1/friendships/{user_id}/following/?count=N&search_surface=following_list_page",
+    "follower_total_daily": "/api/v1/users/{user_id}/info/",
+    "deprecated": "/api/v1/users/web_profile_info/ (429-throttled)"
+  },
+  "conclusion": "InstagramSessionProvider is viable under owner authorization: single owned session + REST endpoints + contract-matching fields, from datacenter IPs, no challenge signals observed across 5 requests from 2 different IPs",
+  "secrets_handling": "cookie values extracted from the local in-app-browser cookie store directly to a 0600 temp file, transferred to droplet /opt/scrapfollo/.env via ssh stdin (owner authorized ssh 2026-09-17 after the web-console typing path failed), verified by name+length only; values never appeared in chat, repo, command lines, or logs; temp files shredded"
+}
