@@ -202,7 +202,7 @@ export async function runTikTokBrowserProbe(
       if (!/api\/user\/list/.test(url)) return;
       listResponses += 1;
       const text = await response.text().catch(() => "");
-      captured.push({ url, text: text.slice(0, 400), status: response.status() });
+      captured.push({ url, text: text.slice(0, 1_500), status: response.status() });
     });
 
     await page.goto(`https://www.tiktok.com/@${target}`, {
@@ -232,7 +232,8 @@ export async function runTikTokBrowserProbe(
         timeout: PROBE_TIMEOUT_MS,
       });
       await page.waitForTimeout(6_000);
-      const match = captured.slice(before).filter((c) => c.url.includes(`listType=${listType}`)).at(-1);
+      const fresh = captured.slice(before);
+      const match = fresh.find((c) => /userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
       if (match !== undefined) {
         const summary = summarizeListText(match.url, match.text);
         if (listType === "followers") {
@@ -249,13 +250,16 @@ export async function runTikTokBrowserProbe(
       timeout: PROBE_TIMEOUT_MS,
     });
     await page.waitForTimeout(4_000);
+    // The app's modal calls use scene= params (no listType), so associate
+    // responses with the click that triggered them by timing window.
     for (const hook of ["followers-count", "following-count"]) {
       const counter = page.locator(`[data-e2e="${hook}"]`).first();
       if (await counter.count()) {
+        const before = captured.length;
         await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
         await page.waitForTimeout(5_000);
-        const match = captured.filter((c) =>
-          c.url.includes(`listType=${hook === "followers-count" ? "followers" : "following"}`)).at(-1);
+        const fresh = captured.slice(before);
+        const match = fresh.find((c) => /userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
         if (match !== undefined) {
           const summary = summarizeListText(match.url, match.text);
           if (hook === "followers-count") {
@@ -276,7 +280,7 @@ export async function runTikTokBrowserProbe(
     evidence.listCaptures = captured.map((c) => ({
       url: maskSignedUrl(c.url),
       status: c.status,
-      textHead: c.text.slice(0, 200),
+      textHead: c.text.slice(0, 400),
     }));
     const shot = await page.screenshot({ fullPage: false }).catch(() => null);
     if (shot !== null) {
