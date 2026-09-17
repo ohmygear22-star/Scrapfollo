@@ -129,8 +129,10 @@ export type TikTokBrowserEvidence = {
 export async function runTikTokBrowserProbe(
   target: string,
   keyValueStore: KeyValueStore,
+  cookiesJson?: string,
 ): Promise<{ final: string; listResponses: number }> {
-  const cookies = parseCookieJar(process.env["TIKTOK_COOKIES_JSON"] ?? "");
+  // Cookies arrive via run input (per-run private KVS) with an env fallback.
+  const cookies = parseCookieJar(cookiesJson ?? process.env["TIKTOK_COOKIES_JSON"] ?? "");
   const proxyPassword = process.env["APIFY_PROXY_PASSWORD"] ?? process.env["APIFY_TOKEN"];
   if (proxyPassword === undefined || proxyPassword === "") {
     throw new Error("tiktok-browser probe requires APIFY_PROXY_PASSWORD or APIFY_TOKEN");
