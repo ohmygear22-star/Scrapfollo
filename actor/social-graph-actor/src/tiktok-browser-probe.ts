@@ -158,7 +158,9 @@ export async function runTikTokBrowserProbe(
     // The apify playwright-CHROME image ships full Google Chrome; the channel
     // bypasses playwright's version-specific browser registry entirely.
     channel: "chrome",
-    headless: true,
+    // Headful under the image's xvfb: TikTok's app hydrates reliably there,
+    // while pure headless serves a skeleton shell (anti-bot behavior).
+    headless: false,
     proxy: {
       server: "http://proxy.apify.com:8000",
       username: "auto",
