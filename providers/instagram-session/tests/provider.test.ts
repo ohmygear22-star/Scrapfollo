@@ -455,3 +455,53 @@ describe("InstagramSessionProvider", () => {
     });
   });
 });
+
+describe("InstagramSessionProvider seeded resolution", () => {
+  it("resolves via users/{id}/info/ without touching username endpoints", async () => {
+    const calls: MockCall[] = [];
+    const seeded = new InstagramSessionProvider({
+      config: TEST_CONFIG,
+      transport: new InstagramSessionTransport(TEST_CONFIG, {
+        fetchImpl: createMockFetch(
+          [
+            {
+              match: /users\/232192182\/info\//,
+              respond: () => ({
+                body: JSON.stringify({
+                  user: {
+                    pk: "232192182",
+                    username: "therock",
+                    follower_count: 381391432,
+                    following_count: 382,
+                    is_verified: true,
+                  },
+                }),
+              }),
+            },
+          ],
+          calls,
+        ),
+        monotonicNow: constantClock,
+        sleep: noSleep,
+      }),
+      seeds: { "@Therock": "232192182" },
+    });
+
+    const profile = await seeded.resolveProfile(
+      { platform: "instagram", username: "therock" },
+      CONTEXT,
+    );
+
+    expect(profile).toEqual({
+      platform: "instagram",
+      platformUserId: "232192182",
+      username: "therock",
+      followerCount: 381391432,
+      followingCount: 382,
+      isVerified: true,
+    });
+    expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
+      "/api/v1/users/232192182/info/",
+    ]);
+  });
+});

@@ -51,6 +51,14 @@ export type InstagramSessionProviderOptions = {
   config?: InstagramSessionConfig;
   env?: InstagramSessionEnv;
   transport?: InstagramSessionTransport;
+  /**
+   * One-time username → platform user id seeds. Instagram removed the
+   * REST username-resolution family (web_profile_info is persistently
+   * throttled; users/search 400s; users/web_search 404s), so identity
+   * resolution prefers a seeded id + the proven users/{id}/info/ call.
+   * Seeds are harvested from the logged-in browser's own app requests.
+   */
+  seeds?: Record<string, string>;
 };
 
 const INSTAGRAM_CAPABILITIES: SocialGraphProviderCapabilities = Object.freeze({
@@ -72,11 +80,18 @@ export class InstagramSessionProvider implements SocialGraphProvider {
 
   readonly #transport: InstagramSessionTransport;
   readonly #pageSizeMax: number;
+  readonly #seeds: Map<string, string>;
 
   constructor(options: InstagramSessionProviderOptions = {}) {
     const config = options.config ?? instagramSessionConfigFromEnv(options.env ?? {});
     this.#transport = options.transport ?? new InstagramSessionTransport(config);
     this.#pageSizeMax = config.pageSizeMax;
+    this.#seeds = new Map(
+      Object.entries(options.seeds ?? {}).map(([username, id]) => [
+        username.trim().replace(/^@/, "").toLowerCase(),
+        id,
+      ]),
+    );
   }
 
   async resolveProfile(
@@ -91,6 +106,10 @@ export class InstagramSessionProvider implements SocialGraphProvider {
       );
     }
     const username = normalizeUsername(input.username);
+    const seed = this.#seeds.get(username.toLowerCase());
+    if (seed !== undefined) {
+      return await this.#resolveViaSeededInfo(username, seed, context.signal);
+    }
 
     try {
       return await this.#resolveViaWebProfileInfo(username, context.signal);
@@ -168,6 +187,37 @@ export class InstagramSessionProvider implements SocialGraphProvider {
         attempts: 1,
         durationMs: response.durationMs,
       },
+    };
+  }
+
+  async #resolveViaSeededInfo(
+    username: string,
+    seededId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<ProviderProfile> {
+    const response = await this.#transport.request({
+      method: "GET",
+      path: `/api/v1/users/${encodeURIComponent(seededId)}/info/`,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    const parsed = parseJsonObject(response.bodyText);
+    const infoUser = userOf(parsed?.["user"]);
+    if (infoUser === undefined) {
+      throw new InstagramSessionProviderError(
+        "PROFILE_UNAVAILABLE",
+        "Instagram returned no profile for the seeded user id",
+      );
+    }
+    return {
+      platform: "instagram",
+      platformUserId: String(infoUser["pk"]),
+      username: String(infoUser["username"] ?? username),
+      ...countField("followerCount", countValue(infoUser["follower_count"])),
+      ...countField("followingCount", countValue(infoUser["following_count"])),
+      ...stringField("fullName", infoUser["full_name"]),
+      ...booleanField("isPrivate", infoUser["is_private"]),
+      ...booleanField("isVerified", infoUser["is_verified"]),
+      ...stringField("profilePicUrl", infoUser["profile_pic_url"]),
     };
   }
 

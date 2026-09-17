@@ -35,8 +35,12 @@ function loadEnvFile(path) {
 }
 
 const username = process.argv[2] ?? "therock";
+const seededId = process.argv[3];
 const env = loadEnvFile(ENV_PATH);
-const provider = new InstagramSessionProvider({ env });
+const provider = new InstagramSessionProvider({
+  env,
+  ...(seededId === undefined ? {} : { seeds: { [username]: seededId } }),
+});
 const context = {
   runId: `ig-smoke-${new Date().toISOString()}`,
   targetId: `${username}-smoke`,
