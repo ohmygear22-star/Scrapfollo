@@ -90,8 +90,13 @@ export async function apifyMain(): Promise<void> {
     failed = true;
     const message = error instanceof ActorInputError
       ? error.message
-      : "Actor run failed";
-    log.error(message, { kind: error instanceof ActorInputError ? "invalid-input" : "run-failure" });
+      : error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : "Actor run failed";
+    log.error(message, {
+      kind: error instanceof ActorInputError ? "invalid-input" : "run-failure",
+      stack: error instanceof Error ? String(error.stack).slice(0, 500) : undefined,
+    });
   } finally {
     if (failed) {
       await Actor.fail("Actor run failed");

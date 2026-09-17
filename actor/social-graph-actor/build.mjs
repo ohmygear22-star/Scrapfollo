@@ -23,6 +23,6 @@ await build({
 
 await writeFile(
   "bundle/package.json",
-  `${JSON.stringify({ private: true, dependencies: { apify: "3.7.2" } }, null, 2)}\n`,
+  `${JSON.stringify({ private: true, dependencies: { apify: "3.7.2", playwright: "1.49.1" } }, null, 2)}\n`,
   "utf8",
 );
