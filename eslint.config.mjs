@@ -16,6 +16,7 @@ export default [
         clearTimeout: "readonly",
         console: "readonly",
         crypto: "readonly",
+        document: "readonly",
         process: "readonly",
         setTimeout: "readonly",
         URL: "readonly",

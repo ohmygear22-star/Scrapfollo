@@ -1,0 +1,244 @@
+import type { KeyValueStore } from "./key-value-store.js";
+
+/**
+ * TikTok owned-session headless-collector probe (Option A, owner 2026-09-17).
+ *
+ * Runs a real Chromium inside the actor over the Apify datacenter proxy with
+ * the owner's TikTok session cookie jar, opens a profile, clicks the
+ * Followers / Following counters, and captures the /api/user/list responses
+ * the TikTok web app itself issues (its own JS attaches X-Dynosaur, msToken,
+ * X-Bogus, X-Gnarly — no static signature implementation involved).
+ *
+ * playwright is confined to this module (architecture test mirrors the
+ * apify-binding exception). Cookie values never enter evidence records.
+ */
+
+const PROBE_TIMEOUT_MS = 90_000;
+
+export type HarvestedCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+};
+
+export type PlaywrightCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+};
+
+/** Chromium stores expires as microseconds since 1601-01-01; playwright wants unix seconds. */
+const CHROME_EPOCH_OFFSET_SECONDS = 11_644_473_600;
+
+export function harvestedCookieToPlaywright(cookie: HarvestedCookie): PlaywrightCookie {
+  const unixSeconds =
+    cookie.expires > 0
+      ? Math.floor(cookie.expires / 1_000_000) - CHROME_EPOCH_OFFSET_SECONDS
+      : -1;
+  return {
+    name: cookie.name,
+    value: cookie.value,
+    domain: cookie.domain,
+    path: cookie.path === "" ? "/" : cookie.path,
+    expires: unixSeconds > 0 ? unixSeconds : -1,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+  };
+}
+
+export function parseCookieJar(rawJson: string): PlaywrightCookie[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    throw new Error("TIKTOK_COOKIES_JSON is not valid JSON");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("TIKTOK_COOKIES_JSON must be an array of cookies");
+  }
+  const cookies = parsed
+    .filter((c): c is HarvestedCookie =>
+      c !== null && typeof c === "object"
+      && typeof (c as HarvestedCookie).name === "string"
+      && typeof (c as HarvestedCookie).value === "string")
+    .map(harvestedCookieToPlaywright);
+  if (!cookies.some((c) => c.name === "sessionid")) {
+    throw new Error("TIKTOK_COOKIES_JSON contains no sessionid; refusing anonymous collection");
+  }
+  return cookies;
+}
+
+export type ListSummary = {
+  url: string;
+  total: number | null;
+  itemCount: number;
+  hasMore: boolean | null;
+  sample: Array<{ uniqueId: string | null; nickname: string | null }>;
+};
+
+export function summarizeListPayload(url: string, json: unknown): ListSummary {
+  const body = json !== null && typeof json === "object" ? json as Record<string, unknown> : {};
+  const users = Array.isArray(body["userInfoList"])
+    ? body["userInfoList"] as Array<Record<string, unknown>>
+    : Array.isArray(body["users"])
+      ? body["users"] as Array<Record<string, unknown>>
+      : [];
+  return {
+    url: maskSignedUrl(url),
+    total: typeof body["total"] === "number" ? body["total"] : null,
+    itemCount: users.length,
+    hasMore: typeof body["hasMore"] === "boolean" ? body["hasMore"] : null,
+    sample: users.slice(0, 3).map((entry) => {
+      const user = entry["user"] !== null && typeof entry["user"] === "object"
+        ? entry["user"] as Record<string, unknown>
+        : entry;
+      return {
+        uniqueId: typeof user["uniqueId"] === "string" ? user["uniqueId"] : null,
+        nickname: typeof user["nickname"] === "string" ? user["nickname"] : null,
+      };
+    }),
+  };
+}
+
+function maskSignedUrl(url: string): string {
+  return url
+    .replace(/(msToken=)[^&]+/g, "$1<MS>")
+    .replace(/(X-Dynosaur=)[^&]+/g, "$1<DYN>")
+    .replace(/(X-Gnarly=)[^&]+/g, "$1<GN>")
+    .replace(/(X-Bogus=)[^&]+/g, "$1<XB>")
+    .replace(/(_signature=)[^&]+/g, "$1<SIG>")
+    .replace(/(a_bogus=)[^&]+/g, "$1<AB>");
+}
+
+export type TikTokBrowserEvidence = {
+  loginDetected: boolean;
+  profileLoaded: boolean;
+  followers: ListSummary | null;
+  following: ListSummary | null;
+  finishedAt: string;
+};
+
+export async function runTikTokBrowserProbe(
+  target: string,
+  keyValueStore: KeyValueStore,
+): Promise<{ final: string; listResponses: number }> {
+  const cookies = parseCookieJar(process.env["TIKTOK_COOKIES_JSON"] ?? "");
+  const proxyPassword = process.env["APIFY_PROXY_PASSWORD"] ?? process.env["APIFY_TOKEN"];
+  if (proxyPassword === undefined || proxyPassword === "") {
+    throw new Error("tiktok-browser probe requires APIFY_PROXY_PASSWORD or APIFY_TOKEN");
+  }
+
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({
+    headless: true,
+    proxy: {
+      server: "http://proxy.apify.com:8000",
+      username: "auto",
+      password: proxyPassword,
+    },
+    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+  });
+
+  const evidence: TikTokBrowserEvidence = {
+    loginDetected: false,
+    profileLoaded: false,
+    followers: null,
+    following: null,
+    finishedAt: new Date().toISOString(),
+  };
+  const captured: Array<{ url: string; json: unknown }> = [];
+  let listResponses = 0;
+
+  try {
+    const context = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+      locale: "en-US",
+      timezoneId: "Asia/Singapore",
+      viewport: { width: 1440, height: 900 },
+    });
+    await context.addCookies(cookies);
+    const page = await context.newPage();
+    page.on("response", async (response) => {
+      const url = response.url();
+      if (!/api\/user\/list/.test(url)) return;
+      listResponses += 1;
+      try {
+        captured.push({ url, json: await response.json() });
+      } catch {
+        captured.push({ url, json: null });
+      }
+    });
+
+    await page.goto(`https://www.tiktok.com/@${target}`, {
+      waitUntil: "domcontentloaded",
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    await page.waitForTimeout(5_000);
+    evidence.profileLoaded = true;
+
+    evidence.loginDetected = await page.evaluate(() => {
+      const loginButton = Array.from(document.querySelectorAll('a,button,[data-e2e]'))
+        .some((el) => /^log in$/i.test((el.textContent ?? "").trim()));
+      return !loginButton;
+    });
+
+    const clickCount = async (label: "Followers" | "Following"): Promise<void> => {
+      const box = await page.evaluate((targetLabel) => {
+        for (const el of Array.from(document.querySelectorAll("h3,h2"))) {
+          const text = el.textContent ?? "";
+          if (!text.includes(targetLabel) || !/\d/.test(text)) continue;
+          const inner = Array.from(el.querySelectorAll("*"))
+            .find((s) => (s.textContent ?? "").trim() === targetLabel);
+          const anchor = inner ?? el;
+          const rect = anchor.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) continue;
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        }
+        return null;
+      }, label);
+      if (box === null) return;
+      await page.mouse.click(box.x, box.y);
+      await page.waitForTimeout(4_500);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(1_000);
+    };
+
+    const beforeFollowers = captured.length;
+    await clickCount("Followers");
+    const followersResponse = captured.slice(beforeFollowers)
+      .find((c) => /listType=followers/.test(c.url) || captured.length === beforeFollowers + 1);
+    if (followersResponse !== undefined) {
+      evidence.followers = summarizeListPayload(followersResponse.url, followersResponse.json);
+    }
+
+    const beforeFollowing = captured.length;
+    await clickCount("Following");
+    const followingResponse = captured.slice(beforeFollowing)
+      .find((c) => /listType=following/.test(c.url) || captured.length === beforeFollowing + 1);
+    if (followingResponse !== undefined) {
+      evidence.following = summarizeListPayload(followingResponse.url, followingResponse.json);
+    }
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
+
+  await keyValueStore.setValue("TIKTOK_BROWSER_EVIDENCE", evidence);
+
+  const final = !evidence.profileLoaded
+    ? "PROFILE_FAILED"
+    : !evidence.loginDetected
+      ? "SESSION_REJECTED"
+      : evidence.followers !== null && evidence.followers.itemCount > 0
+        ? "LIST_DATA_CAPTURED"
+        : "LOGIN_OK_NO_LIST_DATA";
+  return { final, listResponses };
+}

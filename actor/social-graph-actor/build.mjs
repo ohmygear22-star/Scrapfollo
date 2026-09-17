@@ -14,7 +14,7 @@ await build({
   minify: true,
   sourcemap: false,
   legalComments: "none",
-  external: ["apify"],
+  external: ["apify", "playwright"],
   logLevel: "warning",
   banner: {
     js: "/* Bundled social-graph actor. Source of truth: src/ (the Apify SDK is confined to src/apify-binding.ts). */",

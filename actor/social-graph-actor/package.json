@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@social-graph/fake-provider": "workspace:*",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "playwright": "1.49.1"
   }
 }

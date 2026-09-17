@@ -7,6 +7,8 @@ const PACKAGE_ROOT = join(import.meta.dirname, "..");
 const FORBIDDEN_IN_SRC = /pg|starpulse|fake-provider|@social-graph\/actor/i;
 /** The Apify SDK is deliberately confined to this single binding module (P2-T6). */
 const APIFY_BINDING_FILE = "src/apify-binding.ts";
+/** Playwright is likewise confined to the TikTok headless-collector module (P3, 2026-09-17). */
+const TIKTOK_BROWSER_FILE = "src/tiktok-browser-probe.ts";
 
 async function collectTypeScriptFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -48,7 +50,8 @@ describe("actor package architecture boundaries", () => {
       !specifier.startsWith(".")
       && !specifier.startsWith("node:")
       && specifier !== "@social-graph/core"
-      && !(file === APIFY_BINDING_FILE && (specifier === "apify" || specifier.startsWith("apify/"))));
+      && !(file === APIFY_BINDING_FILE && (specifier === "apify" || specifier.startsWith("apify/")))
+      && !(file === TIKTOK_BROWSER_FILE && specifier === "playwright"));
     expect(external).toEqual([]);
 
     expect(imports).not.toContainEqual(
@@ -63,6 +66,14 @@ describe("actor package architecture boundaries", () => {
       (specifier === "apify" || specifier.startsWith("apify/"))
       && file !== APIFY_BINDING_FILE);
     expect(sdkImports).toEqual([]);
+  });
+
+  it("confines playwright to the TikTok browser-collector module", async () => {
+    const imports = await scanImports(join(PACKAGE_ROOT, "src"));
+
+    const playwrightImports = imports.filter(({ file, specifier }) =>
+      specifier === "playwright" && file !== TIKTOK_BROWSER_FILE);
+    expect(playwrightImports).toEqual([]);
   });
 
   it("keeps the fake provider out of production source", async () => {

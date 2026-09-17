@@ -23,3 +23,5 @@ export { LocalKeyValueStore } from "./key-value-store.js";
 export type { KeyValueStore } from "./key-value-store.js";
 export { classifyProbeResponse, runResidentialProbe } from "./probe-classify.js";
 export type { ProbeEvidenceEntry, ProbeStep, ProbeVerdict } from "./probe-classify.js";
+export { runTikTokBrowserProbe } from "./tiktok-browser-probe.js";
+export type { TikTokBrowserEvidence, ListSummary } from "./tiktok-browser-probe.js";
