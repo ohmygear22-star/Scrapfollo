@@ -7,6 +7,7 @@ import { ActorInputError } from "./input.js";
 import type { KeyValueStore } from "./key-value-store.js";
 import { runResidentialProbe } from "./probe-classify.js";
 import { runTikTokSignProbe } from "./tiktok-sign-probe.js";
+import { runTikTokBrowserProbe } from "./tiktok-browser-probe.js";
 
 /**
  * The ONLY module allowed to import the Apify SDK (architecture-enforced).
@@ -33,7 +34,12 @@ function sdkKeyValueStore(): KeyValueStore {
 }
 
 type ProbeInput = {
-  probe: { platform: "instagram" | "tiktok" | "tiktok-sign"; proxyUser?: unknown; target?: unknown };
+  probe: {
+    platform: "instagram" | "tiktok" | "tiktok-sign" | "tiktok-browser";
+    proxyUser?: unknown;
+    target?: unknown;
+    cookiesJson?: unknown;
+  };
 };
 
 function isProbeInput(raw: unknown): raw is ProbeInput {
@@ -41,7 +47,8 @@ function isProbeInput(raw: unknown): raw is ProbeInput {
   const probe = (raw as { probe?: unknown }).probe;
   if (typeof probe !== "object" || probe === null) return false;
   const platform = (probe as { platform?: unknown }).platform;
-  return platform === "instagram" || platform === "tiktok" || platform === "tiktok-sign";
+  return platform === "instagram" || platform === "tiktok" || platform === "tiktok-sign"
+    || platform === "tiktok-browser";
 }
 
 export function createApifyPlatform(): ActorPlatform {
@@ -58,12 +65,17 @@ export async function apifyMain(): Promise<void> {
   try {
     const input = await Actor.getInput();
     if (isProbeInput(input)) {
-      if (input.probe.platform === "tiktok-sign") {
+      if (input.probe.platform === "tiktok-browser" || input.probe.platform === "tiktok-sign") {
         const target = typeof input.probe.target === "string" && input.probe.target.trim() !== ""
           ? input.probe.target.trim().replace(/^@/, "")
           : "khaby.lame";
-        const result = await runTikTokSignProbe(target, sdkKeyValueStore(), "auto");
-        log.info("tiktok sign probe finished", { target, ...result });
+        const cookiesJson = typeof input.probe.cookiesJson === "string"
+          ? input.probe.cookiesJson
+          : undefined;
+        const result = input.probe.platform === "tiktok-browser"
+          ? await runTikTokBrowserProbe(target, sdkKeyValueStore(), cookiesJson)
+          : await runTikTokSignProbe(target, sdkKeyValueStore(), "auto");
+        log.info("tiktok probe finished", { platform: input.probe.platform, target, ...result });
       } else {
         const proxyUser = typeof input.probe.proxyUser === "string" && input.probe.proxyUser !== ""
           ? input.probe.proxyUser
