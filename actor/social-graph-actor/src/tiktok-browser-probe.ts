@@ -140,6 +140,9 @@ export async function runTikTokBrowserProbe(
 
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({
+    // The apify playwright-CHROME image ships full Google Chrome; the channel
+    // bypasses playwright's version-specific browser registry entirely.
+    channel: "chrome",
     headless: true,
     proxy: {
       server: "http://proxy.apify.com:8000",
