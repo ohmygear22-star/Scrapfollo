@@ -10,6 +10,9 @@ export default defineConfig({
       "@social-graph/fake-provider": fileURLToPath(
         new URL("./providers/fake-provider/src/index.ts", import.meta.url),
       ),
+      "@social-graph/instagram-session-provider": fileURLToPath(
+        new URL("./providers/instagram-session/src/index.ts", import.meta.url),
+      ),
     },
   },
 });

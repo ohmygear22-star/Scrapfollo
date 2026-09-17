@@ -12,6 +12,9 @@ or production consumer integration is included.
 packages/social-graph-core   consumer-neutral core: contracts, streaming,
                              pagination, deduplication, retry, cancellation,
                              completeness, orchestration, metrics
+providers/instagram-session  Instagram owned-session provider (following identities
+                            + follower/following counts; follower identities intentionally
+                            unsupported — see docs/spike-evidence/)
 providers/fake-provider      deterministic reference provider (one class,
                              configured per platform via scenarios)
 tests/contracts              reusable provider contract suite
