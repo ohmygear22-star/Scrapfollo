@@ -1,0 +1,15 @@
+[
+  {
+    "platform": "instagram",
+    "rung": 3,
+    "step": "resolve",
+    "url": "https://www.instagram.com/natgeo/",
+    "status": 200,
+    "location": "",
+    "contentType": "",
+    "bodyExcerpt": "HTTP/2 302 \r\nlocation: https://www.instagram.com/accounts/login/?next=https%3A%2F%2Fwww.instagram.com%2Fnatgeo%2F&is_from_rle\r\nstrict-transport-security: max-age=31536000; preload; includeSubDomains\r\ncontent-type: text/html; charset=\"utf-8\"\r\nx-fb-debug: uRPvd/epmq0DT1vzRzxXM+6RtMdtZN4BNHdvNu+1PIPRZusjoYrGiaa29Gu8grT4CgAIT6G9K5KBYBW0onssAQ==\r\ncontent-length: 0\r\ndate: Thu, 17 Sep 2026 02:49:49 GMT\r\n",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-17T02:49:49.523Z"
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "platform": "instagram",
+    "rung": 3,
+    "step": "resolve",
+    "url": "https://www.instagram.com/natgeo/",
+    "verdict": "NETWORK_ERROR",
+    "reason": "US,en;q=0.9 -x http://proxy.apify.com:8000 --proxy-user auto,groups-RESIDENTIAL:apify_actor_run_proxy_[REDACTED] https://www.instagram.com/natgeo/\ncurl: (56) CONNECT tunnel failed, response 407\n",
+    "recordedAt": "2026-09-17T02:49:20.171Z"
+  }
+]

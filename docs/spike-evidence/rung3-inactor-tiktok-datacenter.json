@@ -1,0 +1,28 @@
+[
+  {
+    "platform": "tiktok",
+    "rung": 3,
+    "step": "resolve",
+    "url": "https://www.tiktok.com/@khaby.lame",
+    "status": 200,
+    "location": "",
+    "contentType": "",
+    "bodyExcerpt": "HTTP/2 200 \r\nserver: nginx\r\ncontent-type: text/html; charset=utf-8\r\nfeature-policy: microphone 'none'; geolocation 'none'\r\nreferrer-policy: strict-origin-when-cross-origin\r\nstrict-transport-security: max-age=31536000; includeSubdomains\r\nx-bytefaas-execution-duration: 253.93\r\nx-bytefaas-request-id: 202609170251106D3C5E60893FDC34D74C\r\nx-content-type-options: nosniff\r\nx-download-options: noopen\r\nx-fr",
+    "verdict": "OK",
+    "reason": "resolve signals present",
+    "recordedAt": "2026-09-17T02:51:10.935Z"
+  },
+  {
+    "platform": "tiktok",
+    "rung": 3,
+    "step": "list",
+    "url": "https://www.tiktok.com/api/user/list/?secUid=MS4wLjABAAAAwAg0rSzO65WQfz4RzQgGv2Xdv108BgPXhRrrmNVIHQZ9PO8-flwwRtEppYTS0OjA&count=30&cursor=0&listType=followers&aid=1988",
+    "status": 200,
+    "location": "",
+    "contentType": "",
+    "bodyExcerpt": "HTTP/2 200 \r\nserver: nginx\r\ncontent-type: application/json\r\ncontent-length: 0\r\ntt_stable: 1\r\ntt_orcas_res: 1\r\nx-tt-logid: 20260917025119D0FE1B7816E7734E2DC1\r\nx-ms-token: h_u0YndWy3wOxlgBP3LaGhz1bu1ZrfzSIwEL3xdY3hPhifbFrE4kT3fwILftKEXlOng-2VQKS_ISm5dvojUvRhmfbkBlvOmrsb5LXtkf6nGj6McXC7UKTQAZSiU=\r\ntt-ticket-guard-result: 0\r\naccess-control-expose-headers: x-tt-traceflag,x-tt-logid\r\nx-tt-trace-host: 01",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-17T02:51:19.408Z"
+  }
+]

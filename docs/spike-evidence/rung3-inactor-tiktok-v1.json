@@ -1,0 +1,11 @@
+[
+  {
+    "platform": "tiktok",
+    "rung": 3,
+    "step": "resolve",
+    "url": "https://www.tiktok.com/@khaby.lame",
+    "verdict": "NETWORK_ERROR",
+    "reason": "Error: Command failed: curl -sS --max-time 25 -D - --compressed -H user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) ",
+    "recordedAt": "2026-09-17T02:41:17.366Z"
+  }
+]

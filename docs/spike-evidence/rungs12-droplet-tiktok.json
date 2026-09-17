@@ -1,0 +1,57 @@
+[
+  {
+    "platform": "tiktok",
+    "rung": 1,
+    "step": "resolve",
+    "url": "https://www.tiktok.com/@khaby.lame",
+    "headerSet": "safariMac",
+    "viaResidentialProxy": false,
+    "status": 200,
+    "contentType": "text/html",
+    "location": "",
+    "bodyExcerpt": "<!DOCTYPE html> <html lang=\"en\">   <head>     <link rel=\"icon\" href=\"data:;base64,=\" />     <script id=\"slardar-config\" type=\"application/json\">       {         \"slardarClient\": \"SlardarWAF\",         \"sdkUrl\": \"https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/slardar/fe/s",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-16T16:56:39.205Z"
+  },
+  {
+    "platform": "tiktok",
+    "rung": 2,
+    "step": "resolve",
+    "url": "https://www.tiktok.com/@khaby.lame",
+    "headerSet": "chromeWindows",
+    "viaResidentialProxy": false,
+    "status": 200,
+    "contentType": "text/html",
+    "location": "",
+    "bodyExcerpt": "<!DOCTYPE html> <html lang=\"en\">   <head>     <link rel=\"icon\" href=\"data:;base64,=\" />     <script id=\"slardar-config\" type=\"application/json\">       {         \"slardarClient\": \"SlardarWAF\",         \"sdkUrl\": \"https://sf16-website-login.neutral.ttwstatic.com/obj/tiktok_web_login_static/slardar/fe/s",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-16T16:56:41.296Z"
+  },
+  {
+    "platform": "tiktok",
+    "rung": 2,
+    "step": "resolve",
+    "url": "https://www.tiktok.com/@khaby.lame",
+    "headerSet": "chromeAndroid",
+    "viaResidentialProxy": false,
+    "status": 200,
+    "contentType": "text/html; charset=utf-8",
+    "location": "",
+    "bodyExcerpt": "<!doctype html><html lang=\"en\"><head><script type=\"application/json\" id=\"pumbaa-rule\">{\"_r\":\"eyJjb29raWUiOnsiYmxvY2tlcnMiOlt7ImNvb2tpZXMiOlsia3RsdkRXN0lHNUNsT2N4WVRibVkiLCJNT05JVE9SX0RFVklDRV9JRCIsIk1PTklUT1JfV0VCX0lEIl0sImRvbWFpbnMiOlsidGlrdG9rLmNvbSIsInRpa3Rva3YuY29tIl19XSwiZW5hYmxlZCI6dHJ1ZSwic2F",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-16T16:56:43.808Z"
+  },
+  {
+    "platform": "tiktok",
+    "rung": 3,
+    "step": "resolve",
+    "url": "https://www.tiktok.com/@khaby.lame",
+    "headerSet": "chromeWindows",
+    "verdict": "NETWORK_ERROR",
+    "reason": "Error: Command failed: curl -sS --max-time 25 -D - --compressed -H user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 -H accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8 -H accept-language: en-US,en;q=0.9 -H sec-ch-ua: \"Chromium\";v=\"129\", \"Not=A?Brand\";v=\"8\" -H sec-fetch-mode: navigate -x http://auto:apify_api_[REDACTED],groups=RESIDENTIAL@proxy.apify.com:8000 https://www.tiktok.com/@khaby.lame\ncurl: (56) CONNECT tunnel failed, response 407\n",
+    "recordedAt": "2026-09-16T16:56:46.300Z"
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "platform": "instagram",
+    "rung": 1,
+    "step": "resolve",
+    "url": "https://www.instagram.com/natgeo/",
+    "headerSet": "safariMac",
+    "viaResidentialProxy": false,
+    "status": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "location": "",
+    "bodyExcerpt": "<!DOCTYPE html><html class=\"_9dls _ar44\" lang=\"en\" dir=\"ltr\"><head><link data-default-icon=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" rel=\"icon\" sizes=\"192x192\" href=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" /><meta name=\"bingbot\" content=\"noarchive\" /><m",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-16T16:55:36.879Z"
+  },
+  {
+    "platform": "instagram",
+    "rung": 2,
+    "step": "resolve",
+    "url": "https://www.instagram.com/natgeo/",
+    "headerSet": "chromeWindows",
+    "viaResidentialProxy": false,
+    "status": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "location": "",
+    "bodyExcerpt": "<!DOCTYPE html><html class=\"_9dls _ar44\" lang=\"en\" dir=\"ltr\"><head><link data-default-icon=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" rel=\"icon\" sizes=\"192x192\" href=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" /><meta name=\"bingbot\" content=\"noarchive\" /><m",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-16T16:55:39.708Z"
+  },
+  {
+    "platform": "instagram",
+    "rung": 2,
+    "step": "resolve",
+    "url": "https://www.instagram.com/natgeo/",
+    "headerSet": "chromeAndroid",
+    "viaResidentialProxy": false,
+    "status": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "location": "",
+    "bodyExcerpt": "<!DOCTYPE html><html class=\"_9dls touch _ar44\" lang=\"en\" dir=\"ltr\"><head><link data-default-icon=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" rel=\"icon\" sizes=\"192x192\" href=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" /><meta name=\"bingbot\" content=\"noarchive",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-16T16:55:42.128Z"
+  },
+  {
+    "platform": "instagram",
+    "rung": 3,
+    "step": "resolve",
+    "url": "https://www.instagram.com/natgeo/",
+    "headerSet": "chromeWindows",
+    "viaResidentialProxy": false,
+    "status": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "location": "",
+    "bodyExcerpt": "<!DOCTYPE html><html class=\"_9dls _ar44\" lang=\"en\" dir=\"ltr\"><head><link data-default-icon=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" rel=\"icon\" sizes=\"192x192\" href=\"https://static.cdninstagram.com/rsrc.php/yr/r/rzWiSjZRxk5.webp\" /><meta name=\"bingbot\" content=\"noarchive\" /><m",
+    "verdict": "CAUGHT",
+    "reason": "200 without expected signals (ambiguous defaults to caught)",
+    "recordedAt": "2026-09-16T16:55:44.847Z"
+  }
+]
