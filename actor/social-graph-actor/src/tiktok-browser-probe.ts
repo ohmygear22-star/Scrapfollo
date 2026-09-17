@@ -235,7 +235,7 @@ export async function runTikTokBrowserProbe(
       });
       await page.waitForTimeout(6_000);
       const fresh = captured.slice(before);
-      const match = fresh.find((c) => /userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
+      const match = fresh.find((c) => /userList|userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
       if (match !== undefined) {
         const summary = summarizeListText(match.url, match.text);
         if (listType === "followers") {
@@ -261,7 +261,7 @@ export async function runTikTokBrowserProbe(
         await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
         await page.waitForTimeout(5_000);
         const fresh = captured.slice(before);
-        const match = fresh.find((c) => /userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
+        const match = fresh.find((c) => /userList|userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
         if (match !== undefined) {
           const summary = summarizeListText(match.url, match.text);
           if (hook === "followers-count") {
