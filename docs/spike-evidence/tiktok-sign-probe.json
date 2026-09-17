@@ -1,0 +1,34 @@
+{
+  "task": "TikTok signature verification (owner-ordered 2026-09-17: 開工)",
+  "date": "2026-09-17",
+  "runs": [
+    { "build": "0.7.2", "final": "NO_TOKEN", "note": "header/body split parser failed on TikTok's two-block wire format; raw capture revealed x-ms-token issued on every empty-body response" },
+    { "build": "0.8.1", "final": "NO_TOKEN", "note": "temp-file split still captured the response header block inside the body file; token harvest still broken" },
+    { "build": "0.9.1", "final": "TOKEN_ONLY_INSUFFICIENT", "note": "curl %{header_json} capture — clean parse, token harvested and attached; the decisive run" }
+  ],
+  "decisive_run": {
+    "actor_build": "0.9.1",
+    "target": "khaby.lame",
+    "requests": 4,
+    "steps": [
+      { "step": "profile", "status": 200, "result": "secUid extracted" },
+      { "step": "token-warmup", "status": 200, "bodyLength": 0, "result": "x-ms-token harvested from response header" },
+      { "step": "list-followers", "status": 200, "bodyLength": 0, "msTokenAttached": "query param + cookie", "result": "empty body despite token" },
+      { "step": "list-following", "status": 200, "bodyLength": 0, "msTokenAttached": "query param + cookie", "result": "empty body despite token" }
+    ],
+    "verdict": "server-issued msToken alone does NOT unlock /api/user/list/; the request signature (X-Bogus/a_bogus) is required"
+  },
+  "algorithm_research": {
+    "npm_xbogus_1.0.2": "BROKEN — offline check: output insensitive to query params (identical signature for count=30/50, followers/following, cursor=0/30), only UA-sensitive; per-process nondeterministic",
+    "davidteather_TikTok-Api_current": "signs via Playwright browser context executing TikTok's own JS (stealth-hardened); pure JS ports removed from the codebase",
+    "carcabot_tiktok-signature": "headless browser approach; ecosystem reports of blank results",
+    "conclusion": "pure static ports are dead; viable self-build = browser-executed signing"
+  },
+  "regional_note": "TikTok web is DISCONTINUED in Hong Kong (redirects to /hk/about) — the owner's browser cannot be used for TikTok observation or signing",
+  "options_after_verification": {
+    "A_self_build_browser_signing": "headless Chromium inside the Apify actor over datacenter proxy (profile pages proven 200 there); browser session signs many URLs per run; auto-survives TikTok JS rotations; est. compute ~$0.05-0.1/day for daily 40-idol polling; build effort ~1-2 days",
+    "B_rent_scraptik": "$0.002/request (~$17-24/mo at 40 idols daily) + Starter $19/mo required + ~$400 remaining credit forfeiture risk",
+    "C_profile_level_only": "counts/secUid free via existing in-actor proxy path; lists dropped"
+  },
+  "total_live_tiktok_requests_today": "8 (4 in spike T4 evidence + 4 in this verification; all bounded and reported)"
+}
