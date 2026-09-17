@@ -5,6 +5,7 @@ import type { ActorPlatform } from "./main.js";
 import type { DatasetWriter } from "./dataset-writer.js";
 import { ActorInputError } from "./input.js";
 import type { KeyValueStore } from "./key-value-store.js";
+import { runResidentialProbe } from "./probe-classify.js";
 
 /**
  * The ONLY module allowed to import the Apify SDK (architecture-enforced).
@@ -30,6 +31,14 @@ function sdkKeyValueStore(): KeyValueStore {
   };
 }
 
+function isProbeInput(raw: unknown): raw is { probe: { platform: "instagram" | "tiktok" } } {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return false;
+  const probe = (raw as { probe?: unknown }).probe;
+  if (typeof probe !== "object" || probe === null) return false;
+  const platform = (probe as { platform?: unknown }).platform;
+  return platform === "instagram" || platform === "tiktok";
+}
+
 export function createApifyPlatform(): ActorPlatform {
   return {
     registry: new Map(),
@@ -43,7 +52,12 @@ export async function apifyMain(): Promise<void> {
   let failed = false;
   try {
     const input = await Actor.getInput();
-    await runActor(input, createApifyPlatform());
+    if (isProbeInput(input)) {
+      const result = await runResidentialProbe(input.probe.platform, sdkKeyValueStore());
+      log.info("residential probe finished", { platform: input.probe.platform, ...result });
+    } else {
+      await runActor(input, createApifyPlatform());
+    }
   } catch (error) {
     failed = true;
     const message = error instanceof ActorInputError

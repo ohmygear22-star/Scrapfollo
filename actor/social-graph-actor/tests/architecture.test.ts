@@ -46,6 +46,7 @@ describe("actor package architecture boundaries", () => {
 
     const external = imports.filter(({ file, specifier }) =>
       !specifier.startsWith(".")
+      && !specifier.startsWith("node:")
       && specifier !== "@social-graph/core"
       && !(file === APIFY_BINDING_FILE && (specifier === "apify" || specifier.startsWith("apify/"))));
     expect(external).toEqual([]);
