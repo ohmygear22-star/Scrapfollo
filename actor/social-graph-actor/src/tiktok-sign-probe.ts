@@ -107,10 +107,10 @@ export async function runTikTokSignProbe(
 
   const curl = async (url: string, extraHeaders: string[] = []): Promise<CurlResponse> => {
     requests += 1;
-    const headerFile = `/tmp/tt-h-${requests}`;
     const bodyFile = `/tmp/tt-b-${requests}`;
     const { stdout } = await execFileAsync("curl", [
-      "-sS", "--max-time", "25", "-D", headerFile, "-o", bodyFile, "--compressed",
+      "-sS", "--max-time", "25", "-o", bodyFile, "--compressed",
+      "-w", "%{header_json}\n%{response_code}",
       "-H", `user-agent: ${USER_AGENT}`,
       "-H", "accept: application/json, text/plain, */*",
       "-H", "accept-language: en-US,en;q=0.9",
@@ -120,37 +120,38 @@ export async function runTikTokSignProbe(
       "--proxy-user", `${proxyUser}:${password}`,
       url,
     ], { maxBuffer: 20 * 1024 * 1024 });
-    void stdout;
-    const { readFile, rm } = await import("node:fs/promises");
-    const [headerText, body] = await Promise.all([
-      readFile(headerFile, "utf8").catch(() => ""),
-      readFile(bodyFile, "utf8").catch(() => ""),
-    ]);
-    void rm(headerFile, { force: true });
-    void rm(bodyFile, { force: true });
+    const lastNewline = stdout.lastIndexOf("\n");
+    const headerJsonText = lastNewline === -1 ? "{}" : stdout.slice(0, lastNewline);
+    const status = Number.parseInt(stdout.slice(lastNewline + 1).trim(), 10) || 0;
+    const body = await (await import("node:fs/promises")).readFile(bodyFile, "utf8").catch(() => "");
+    void (await import("node:fs/promises")).rm(bodyFile, { force: true });
+
+    const headerMap = safeParseHeaderMap(headerJsonText);
     const headers: Record<string, string> = {};
     const setCookies: string[] = [];
-    let status = 0;
-    for (const rawLine of headerText.split(/\r\n|\n/)) {
-      const line = rawLine.trimEnd();
-      if (line === "") continue;
-      const statusMatch = /^HTTP\/[\d.]+ (\d+)/.exec(line);
-      if (statusMatch !== null) {
-        status = Number(statusMatch[1]);
-        continue;
-      }
-      const separator = line.indexOf(":");
-      if (separator > 0) {
-        const name = line.slice(0, separator).trim().toLowerCase();
-        const value = line.slice(separator + 1).trim();
-        if (name === "set-cookie") {
-          setCookies.push(value);
-        } else {
-          headers[name] = value;
+    for (const [name, values] of Object.entries(headerMap)) {
+      if (!Array.isArray(values)) continue;
+      if (name.toLowerCase() === "set-cookie") {
+        setCookies.push(...values);
+      } else if (values.length > 0) {
+        const last = values[values.length - 1];
+        if (last !== undefined) {
+          headers[name.toLowerCase()] = last;
         }
       }
     }
     return { status, headers, setCookies, body };
+  };
+
+  const safeParseHeaderMap = (text: string): Record<string, string[]> => {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, string[]>)
+        : {};
+    } catch {
+      return {};
+    }
   };
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
