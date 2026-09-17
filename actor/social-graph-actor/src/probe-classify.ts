@@ -91,6 +91,7 @@ function proxyPassword(): string {
 export async function runResidentialProbe(
   platform: "instagram" | "tiktok",
   keyValueStore: KeyValueStore,
+  proxyUser: string = "auto,groups-RESIDENTIAL",
 ): Promise<{ final: string; requests: number }> {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -120,7 +121,7 @@ export async function runResidentialProbe(
         "-H", `accept: ${BROWSER_HEADERS.accept}`,
         "-H", `accept-language: ${BROWSER_HEADERS["accept-language"]}`,
         "-x", "http://proxy.apify.com:8000",
-        "--proxy-user", `auto,groups-RESIDENTIAL:${proxyPassword()}`,
+        "--proxy-user", `${proxyUser}:${proxyPassword()}`,
         url,
       ];
       const { stdout } = await execFileAsync("curl", args, { maxBuffer: 20 * 1024 * 1024 });
@@ -175,7 +176,7 @@ export async function runResidentialProbe(
         "-sS", "--max-time", "25",
         "-H", `user-agent: ${BROWSER_HEADERS["user-agent"]}`,
         "-x", "http://proxy.apify.com:8000",
-        "--proxy-user", `auto,groups-RESIDENTIAL:${proxyPassword()}`,
+        "--proxy-user", `${proxyUser}:${proxyPassword()}`,
         `https://www.tiktok.com/@${subject}`,
       ], { maxBuffer: 20 * 1024 * 1024 }).catch(() => ({ stdout: "" }));
       const secUidMatch = /"secUid":\s*"([^"]+)"/.exec(stdout);

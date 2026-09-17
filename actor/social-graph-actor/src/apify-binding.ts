@@ -31,7 +31,9 @@ function sdkKeyValueStore(): KeyValueStore {
   };
 }
 
-function isProbeInput(raw: unknown): raw is { probe: { platform: "instagram" | "tiktok" } } {
+function isProbeInput(raw: unknown): raw is {
+  probe: { platform: "instagram" | "tiktok"; proxyUser?: unknown };
+} {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return false;
   const probe = (raw as { probe?: unknown }).probe;
   if (typeof probe !== "object" || probe === null) return false;
@@ -53,8 +55,11 @@ export async function apifyMain(): Promise<void> {
   try {
     const input = await Actor.getInput();
     if (isProbeInput(input)) {
-      const result = await runResidentialProbe(input.probe.platform, sdkKeyValueStore());
-      log.info("residential probe finished", { platform: input.probe.platform, ...result });
+      const proxyUser = typeof input.probe.proxyUser === "string" && input.probe.proxyUser !== ""
+        ? input.probe.proxyUser
+        : "auto,groups-RESIDENTIAL";
+      const result = await runResidentialProbe(input.probe.platform, sdkKeyValueStore(), proxyUser);
+      log.info("residential probe finished", { platform: input.probe.platform, proxyUser, ...result });
     } else {
       await runActor(input, createApifyPlatform());
     }
