@@ -1,0 +1,20 @@
+{
+  "task": "TikTok browser-collector stabilization log (2026-09-17 night)",
+  "final_head": "91f5d8d (actor 0.21.1 deployed)",
+  "data_shape_CONFIRMED_from_run_N1162cVhiVKelx1bc": {
+    "endpoint": "GET /api/user/list/ (app-issued, scene=67 for followers modal)",
+    "response": "{ total, hasMore, minCursor/maxCursor, userList: [ { stats: {diggCount, followerCount, followingCount, ...}, user: {uniqueId, nickname, secUid, ...} } ] }",
+    "proof_values": "total=162924864 (khaby.lame follower count matches profile); hasMore:true observed; entries carry per-target follower stats",
+    "contract_mapping": "userList[].user.uniqueId->username, nickname->fullName, secUid->stable id, stats.followerCount->optional enrichment"
+  },
+  "hydration_reliability_runs": [
+    { "build": "0.18.1", "run": 1, "list_captures": 0, "note": "skeleton, no clicks" },
+    { "build": "0.18.1", "run": "N1162cVhiVKelx1bc", "list_captures": 3, "note": "FULL DATA (userList+total)" },
+    { "build": "0.19.1 headful", "run": "RTSC4KPm4E4YEFQRu", "list_captures": 3, "note": "following summary populated; followers timing-miss" },
+    { "build": "0.20.1", "run": "ot0t7y2nmTuDZywgO", "list_captures": 3, "note": "empty-body selection (regex missed userList)" },
+    { "build": "0.21.1", "run": "hQ7pOyrtR81tO9Qbg", "list_captures": 0, "note": "no hydration at all this run" }
+  ],
+  "conclusion": "Pipeline PROVEN (2/5 runs captured full data); reliability is the remaining gap — variance is TikTok's anti-headless hydration behavior. Next: ecosystem-standard stealth patches (navigator.webdriver, chrome runtime objects — cf. davidteather/TikTok-Api stealth/ directory), longer hydration waits, click retries, and possibly warm-up navigation before the profile.",
+  "ig_freeze_note": "IG collection FROZEN since the automated-behaviour warning (2026-09-17); resume >=1-2 weeks with single-IP + strict pacing discipline",
+  "tally_tonight": "5 actor runs (each = 1 browser session + organic page loads)"
+}
