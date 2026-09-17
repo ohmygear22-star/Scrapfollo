@@ -21,8 +21,9 @@ export type HarvestedCookie = {
   domain: string;
   path: string;
   expires: number;
-  httpOnly: boolean;
-  secure: boolean;
+  /** SQLite columns arrive as 0/1 integers; booleans in hand-built jars. */
+  httpOnly: boolean | number;
+  secure: boolean | number;
 };
 
 export type PlaywrightCookie = {
@@ -49,8 +50,8 @@ export function harvestedCookieToPlaywright(cookie: HarvestedCookie): Playwright
     domain: cookie.domain,
     path: cookie.path === "" ? "/" : cookie.path,
     expires: unixSeconds > 0 ? unixSeconds : -1,
-    httpOnly: cookie.httpOnly,
-    secure: cookie.secure,
+    httpOnly: cookie.httpOnly === true || cookie.httpOnly === 1,
+    secure: cookie.secure === true || cookie.secure === 1,
   };
 }
 
