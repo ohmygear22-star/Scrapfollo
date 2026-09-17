@@ -60,6 +60,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/social-graph-core
 
+  providers/instagram-session:
+    dependencies:
+      '@social-graph/core':
+        specifier: workspace:*
+        version: link:../../packages/social-graph-core
+
 packages:
 
   '@apify/consts@2.58.1':
