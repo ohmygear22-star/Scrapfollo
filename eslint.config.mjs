@@ -25,6 +25,15 @@ export default [
     rules: tseslint.configs.recommended.rules,
   },
   {
+    files: ["spike/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly",
+      },
+    },
+  },
+  {
     files: ["packages/social-graph-core/src/**/*.ts"],
     rules: {
       "no-restricted-imports": ["error", {
