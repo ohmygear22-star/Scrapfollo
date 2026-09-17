@@ -124,6 +124,7 @@ export type TikTokBrowserEvidence = {
   profileLoaded: boolean;
   followers: ListSummary | null;
   following: ListSummary | null;
+  apiUrls: string[];
   finishedAt: string;
 };
 
@@ -158,10 +159,12 @@ export async function runTikTokBrowserProbe(
     profileLoaded: false,
     followers: null,
     following: null,
+    apiUrls: [],
     finishedAt: new Date().toISOString(),
   };
   const captured: Array<{ url: string; json: unknown }> = [];
   let listResponses = 0;
+  let pageScreenshotCache: Promise<Uint8Array | null> | null = null;
 
   try {
     const context = await browser.newContext({
@@ -175,6 +178,10 @@ export async function runTikTokBrowserProbe(
     const page = await context.newPage();
     page.on("response", async (response) => {
       const url = response.url();
+      if (!/tiktok\.com\/api\//.test(url)) return;
+      if (evidence.apiUrls.length < 20) {
+        evidence.apiUrls.push(maskSignedUrl(url).slice(0, 200));
+      }
       if (!/api\/user\/list/.test(url)) return;
       listResponses += 1;
       try {
@@ -233,10 +240,18 @@ export async function runTikTokBrowserProbe(
     if (followingResponse !== undefined) {
       evidence.following = summarizeListPayload(followingResponse.url, followingResponse.json);
     }
+    pageScreenshotCache = page.screenshot({ fullPage: false }).catch(() => null);
   } finally {
     await browser.close().catch(() => undefined);
   }
 
+  if (listResponses === 0 && evidence.profileLoaded) {
+    // Diagnostic screenshot when the click never triggered a list request.
+    const screenshot = await (pageScreenshotCache ?? Promise.resolve(null));
+    if (screenshot !== null) {
+      await keyValueStore.setValue("TIKTOK_SCREENSHOT", screenshot);
+    }
+  }
   await keyValueStore.setValue("TIKTOK_BROWSER_EVIDENCE", evidence);
 
   const final = !evidence.profileLoaded
