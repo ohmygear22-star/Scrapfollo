@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aggregateSceneCaptures,
   harvestedCookieToPlaywright,
   parseCookieJar,
   summarizeListPayload,
@@ -73,5 +74,38 @@ describe("tiktok browser probe helpers", () => {
     const summary = summarizeListPayload("https://www.tiktok.com/api/user/list/?x=1", null);
     expect(summary.itemCount).toBe(0);
     expect(summary.total).toBeNull();
+  });
+});
+
+describe("aggregateSceneCaptures", () => {
+  it("merges scroll-paginated pages with uniqueId dedup", () => {
+    const page1 = JSON.stringify({
+      total: 81, hasMore: true,
+      userList: [
+        { user: { uniqueId: "aaa", nickname: "A" } },
+        { user: { uniqueId: "bbb", nickname: "B" } },
+      ],
+    });
+    const page2 = JSON.stringify({
+      total: 81, hasMore: false,
+      userList: [
+        { user: { uniqueId: "bbb", nickname: "B" } },
+        { user: { uniqueId: "ccc", nickname: "C" } },
+      ],
+    });
+    const aggregate = aggregateSceneCaptures("151", [
+      { url: "https://www.tiktok.com/api/user/list/?scene=151&x=1", text: page1 },
+      { url: "https://www.tiktok.com/api/user/list/?scene=151&x=2", text: page2 },
+      { url: "https://www.tiktok.com/api/user/list/?scene=67&x=3", text: page1 },
+    ]);
+    expect(aggregate).toMatchObject({
+      scene: "151", pages: 2, mergedItems: 3, total: 81, hasMore: false,
+    });
+    expect(aggregate?.uniqueIds).toEqual(["aaa", "bbb", "ccc"]);
+  });
+
+  it("returns null when the scene never fired", () => {
+    const result = aggregateSceneCaptures("67", [{ url: "?scene=151", text: "{}" }]);
+    expect(result).toBeNull();
   });
 });

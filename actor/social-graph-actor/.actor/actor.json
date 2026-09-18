@@ -3,7 +3,7 @@
   "name": "social-graph-actor",
   "title": "Social Graph Actor",
   "description": "Provider-neutral social-graph relationship collection. Phase 2 wrapper: input validation, streaming dataset output, RUN_SUMMARY. Live providers arrive in Phase 3; until then every target reports PROVIDER_UNAVAILABLE.",
-  "version": "0.26",
+  "version": "0.27",
   "buildTag": "latest",
   "input": "./input.schema.json",
   "dockerfile": "../Dockerfile"

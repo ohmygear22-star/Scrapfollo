@@ -141,6 +141,8 @@ export type TikTokBrowserEvidence = {
   sessionCookieAlive?: boolean;
   cookieNamesAfterLoad?: string[];
   listCaptures?: Array<{ url: string; status: number; textHead: string }>;
+  followersAggregate?: SceneAggregate | null;
+  followingAggregate?: SceneAggregate | null;
   finishedAt: string;
 };
 
@@ -258,15 +260,27 @@ export async function runTikTokBrowserProbe(
       const contextCookies = await context.cookies();
       evidence.sessionCookieAlive = contextCookies.some((c) => c.name === "sessionid");
 
-      // Open both list modals via the counter hooks.
-      for (const hook of ["followers-count", "following-count"]) {
+      // Open each modal, scroll it to trigger lazy pagination, close it.
+      const openAndScroll = async (hook: string): Promise<void> => {
         const counter = page.locator(`[data-e2e="${hook}"]`).first();
-        if (await counter.count()) {
-          await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
-          await page.waitForTimeout(5_000);
-          await page.keyboard.press("Escape").catch(() => undefined);
-          await page.waitForTimeout(1_000);
+        if (!(await counter.count())) return;
+        await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
+        await page.waitForTimeout(3_500);
+        for (let i = 0; i < 4; i += 1) {
+          await page.mouse.wheel(0, 1_500).catch(() => undefined);
+          await page.waitForTimeout(1_500);
         }
+        await page.keyboard.press("Escape").catch(() => undefined);
+        await page.waitForTimeout(1_000);
+      };
+      await openAndScroll("followers-count");
+      await openAndScroll("following-count");
+      // Retry round when either modal produced no userList data.
+      const sceneHasData = (scene: string) =>
+        captured.some((c) => c.url.includes(`scene=${scene}`) && c.text.includes("userList"));
+      if (!sceneHasData("67") || !sceneHasData("151")) {
+        await openAndScroll("following-count");
+        await openAndScroll("followers-count");
       }
 
       // Scene values are empirical: 67 = followers modal, 151 = following modal
@@ -285,6 +299,8 @@ export async function runTikTokBrowserProbe(
       if (followingCapture !== undefined) {
         evidence.following = summarizeListText(followingCapture.url, followingCapture.text);
       }
+      evidence.followersAggregate = aggregateSceneCaptures("67", captured);
+      evidence.followingAggregate = aggregateSceneCaptures("151", captured);
       evidence.listCaptures = captured.map((c) => ({
         url: maskSignedUrl(c.url),
         status: c.status,
@@ -321,4 +337,60 @@ export async function runTikTokBrowserProbe(
         ? "LIST_DATA_CAPTURED"
         : "LOGIN_OK_NO_LIST_DATA";
   return { final, listResponses };
+}
+
+export type SceneAggregate = {
+  scene: string | null;
+  pages: number;
+  mergedItems: number;
+  uniqueIds: string[];
+  total: number | null;
+  hasMore: boolean | null;
+};
+
+/**
+ * Merges every captured response of one modal scene into a single summary:
+ * list pages deduplicate by uniqueId, so the merged count answers "how many
+ * accounts did we actually enumerate" across scroll-triggered pages.
+ */
+export function aggregateSceneCaptures(
+  scene: string,
+  captures: Array<{ url: string; text: string }>,
+): SceneAggregate | null {
+  const matching = captures.filter((c) => c.url.includes(`scene=${scene}`));
+  if (matching.length === 0) return null;
+  const items = new Map<string, { uniqueId: string | null; nickname: string | null }>();
+  let total: number | null = null;
+  let hasMore: boolean | null = null;
+  for (const capture of matching) {
+    try {
+      const body = JSON.parse(capture.text) as Record<string, unknown>;
+      if (typeof body["total"] === "number") total = body["total"];
+      if (typeof body["hasMore"] === "boolean") hasMore = body["hasMore"];
+      const list = body["userList"];
+      if (!Array.isArray(list)) continue;
+      for (const entry of list as Array<Record<string, unknown>>) {
+        const user = entry["user"] !== null && typeof entry["user"] === "object"
+          ? entry["user"] as Record<string, unknown>
+          : entry;
+        const uniqueId = typeof user["uniqueId"] === "string" ? user["uniqueId"] : null;
+        if (uniqueId !== null) {
+          items.set(uniqueId, {
+            uniqueId,
+            nickname: typeof user["nickname"] === "string" ? user["nickname"] : null,
+          });
+        }
+      }
+    } catch {
+      // truncated or non-JSON body: skip the page
+    }
+  }
+  return {
+    scene,
+    pages: matching.length,
+    mergedItems: items.size,
+    uniqueIds: Array.from(items.keys()).slice(0, 5),
+    total,
+    hasMore,
+  };
 }
