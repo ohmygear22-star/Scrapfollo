@@ -1,4 +1,5 @@
 import type { KeyValueStore } from "./key-value-store.js";
+import { TIKTOK_STEALTH_INIT_SCRIPT } from "./tiktok-stealth.js";
 
 /**
  * TikTok owned-session headless-collector probe (Option A, owner 2026-09-17).
@@ -187,14 +188,24 @@ export async function runTikTokBrowserProbe(
 
   try {
     const context = await browser.newContext({
+      // Stealth patches run before page scripts on every navigation.
+      // (addInitScript goes through the context, declared here first.)
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
       locale: "en-US",
       timezoneId: "Asia/Singapore",
       viewport: { width: 1440, height: 900 },
     });
+    await context.addInitScript({ content: TIKTOK_STEALTH_INIT_SCRIPT });
     await context.addCookies(cookies);
     const page = await context.newPage();
+
+    // Warm-up navigation: establishes session context before the profile.
+    await page.goto("https://www.tiktok.com/foryou", {
+      waitUntil: "domcontentloaded",
+      timeout: PROBE_TIMEOUT_MS,
+    }).catch(() => undefined);
+    await page.waitForTimeout(4_000);
     page.on("response", async (response) => {
       const url = response.url();
       if (!/tiktok\.com\/api\//.test(url)) return;
@@ -207,11 +218,22 @@ export async function runTikTokBrowserProbe(
       captured.push({ url, text: text.slice(0, 1_500), status: response.status() });
     });
 
-    await page.goto(`https://www.tiktok.com/@${target}`, {
+    const gotoProfile = () => page.goto(`https://www.tiktok.com/@${target}`, {
       waitUntil: "domcontentloaded",
       timeout: PROBE_TIMEOUT_MS,
     });
-    await page.waitForTimeout(5_000);
+    await gotoProfile();
+    const countersVisible = () => page
+      .locator('[data-e2e="followers-count"], [data-e2e="following-count"]')
+      .first()
+      .waitFor({ state: "visible", timeout: 20_000 })
+      .then(() => true, () => false);
+    if (!(await countersVisible())) {
+      // One retry: hydration sometimes needs a fresh load.
+      await page.reload({ waitUntil: "domcontentloaded", timeout: PROBE_TIMEOUT_MS }).catch(() => undefined);
+      await countersVisible().catch(() => false);
+    }
+    await page.waitForTimeout(2_000);
     evidence.profileLoaded = true;
 
     evidence.loginDetected = await page.evaluate(() =>
