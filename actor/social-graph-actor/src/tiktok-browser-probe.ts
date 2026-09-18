@@ -166,7 +166,10 @@ export async function runTikTokBrowserProbe(
     headless: false,
     proxy: {
       server: "http://proxy.apify.com:8000",
-      username: "auto",
+      // Sticky session: one consistent datacenter IP. The rotating "auto"
+      // pool mixes clean and TikTok-flagged IPs — the observed run-to-run
+      // hydration variance tracked exactly with IP rotation.
+      username: process.env["TIKTOK_PROXY_SESSION"] ?? "auto,session-tiktok-1",
       password: proxyPassword,
     },
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
