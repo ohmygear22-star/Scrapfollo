@@ -55,6 +55,12 @@ importers:
         specifier: 1.49.1
         version: 1.49.1
 
+  adapters/starpulse-persistence:
+    dependencies:
+      '@social-graph/core':
+        specifier: workspace:*
+        version: link:../../packages/social-graph-core
+
   packages/social-graph-core: {}
 
   providers/fake-provider:

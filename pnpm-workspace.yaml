@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "providers/*"
   - "actor/*"
+  - "adapters/*"
 enableGlobalVirtualStore: false
 allowBuilds:
   esbuild@0.28.2: true
