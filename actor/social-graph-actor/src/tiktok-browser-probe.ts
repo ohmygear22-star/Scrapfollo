@@ -144,6 +144,7 @@ export type TikTokBrowserEvidence = {
   followersAggregate?: SceneAggregate | null;
   followingAggregate?: SceneAggregate | null;
   profileCounts?: ProfileCounts | null;
+  dialogAria?: string | undefined;
   sceneReports?: Array<{ scene: string | null; kind: string; aggregate: SceneAggregate }>;
   finishedAt: string;
 };
@@ -286,9 +287,12 @@ export async function runTikTokBrowserProbe(
         return false;
       };
       const clickTab = async (label: string): Promise<void> => {
-        const tab = page.getByRole("dialog").getByText(label, { exact: true }).first();
-        if (await tab.count()) {
-          await tab.click({ force: true, timeout: 4_000 }).catch(() => undefined);
+        const dialog = page.getByRole("dialog");
+        const byRole = dialog.getByRole("tab", { name: new RegExp(label, "i") }).first();
+        const byText = dialog.getByText(label, { exact: true }).first();
+        const target = (await byRole.count()) > 0 ? byRole : byText;
+        if ((await target.count()) > 0) {
+          await target.click({ force: true, timeout: 4_000 }).catch(() => undefined);
           await page.waitForTimeout(3_000);
         }
       };
@@ -300,6 +304,11 @@ export async function runTikTokBrowserProbe(
         }
       };
       if (await openModal()) {
+        evidence.dialogAria = (await page.getByRole("dialog").ariaSnapshot().catch(() => null)) ?? undefined;
+        const dialogShot = await page.screenshot({ fullPage: false }).catch(() => null);
+        if (dialogShot !== null) {
+          await keyValueStore.setValue("TIKTOK_DIALOG_SCREENSHOT", dialogShot);
+        }
         for (const tabLabel of ["Followers", "Following", "Friends"]) {
           const before = captured.length;
           await clickTab(tabLabel);
