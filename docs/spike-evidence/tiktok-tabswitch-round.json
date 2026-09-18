@@ -1,0 +1,25 @@
+{
+  "task": "TikTok in-modal tab switching round",
+  "date": "2026-09-18 late",
+  "head": "a7ddb3a (deployed as 0.27.2 — actor.json version bump was dropped from the fix commit; cosmetic)",
+  "run_UULaD75txoFUZTqV8": {
+    "profileCounts_live": { "following": 81, "followers": 163000000 },
+    "sceneReports": [
+      { "scene": "21", "kind": "friends (misclassify: total=0 edge)", "items": 0 },
+      { "scene": "151", "kind": "friends", "items": 31, "total": 32, "ids": ["lamine.yamal", "williamlast_krm", "thestanlley1", "mrbeast", "fifaworldcup"] }
+    ],
+    "missing": "Followers and full-Following scenes did NOT fire — dialog tab clicks (getByText exact 'Followers'/'Following') did not switch lists",
+    "hypotheses": [
+      "tab labels differ in this modal variant (e.g. localized or icon tabs)",
+      "the modal opened might be the Friends-only variant without tabs",
+      "tab elements exist but force-click hit the wrong match (text appears multiple times in dialog)"
+    ],
+    "next_debug_step": "capture a screenshot + DOM snapshot of the OPEN dialog in the actor (evidence TIKTOK_SCREENSHOT exists — pull and read it next session), then target tabs by role=tab or data-e2e"
+  },
+  "systems_working": [
+    "profile count live-parse (81/163M from header)",
+    "total-based scene classification (friends correctly identified)",
+    "cross-page aggregation with uniqueId dedup",
+    "SG sticky session + stealth + headful (session alive, profile hydrates)"
+  ]
+}
