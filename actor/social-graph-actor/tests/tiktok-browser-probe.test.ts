@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   aggregateSceneCaptures,
+  classifySceneAggregate,
   harvestedCookieToPlaywright,
   parseCookieJar,
+  parseProfileCounts,
   summarizeListPayload,
 } from "../src/tiktok-browser-probe.js";
 
@@ -107,5 +109,27 @@ describe("aggregateSceneCaptures", () => {
   it("returns null when the scene never fired", () => {
     const result = aggregateSceneCaptures("67", [{ url: "?scene=151", text: "{}" }]);
     expect(result).toBeNull();
+  });
+});
+
+describe("profile counts and scene classification", () => {
+  it("parses compact count headers", () => {
+    expect(parseProfileCounts("81 Following 162.9M Followers 2.7B Likes")).toEqual({
+      following: 81,
+      followers: 162_900_000,
+    });
+    expect(parseProfileCounts("1,234 Following 5K Followers")).toEqual({
+      following: 1_234,
+      followers: 5_000,
+    });
+    expect(parseProfileCounts("no counts here")).toBeNull();
+  });
+
+  it("classifies scenes by total magnitude", () => {
+    const profile = { following: 81, followers: 162_900_000 };
+    expect(classifySceneAggregate({ scene: "x", pages: 1, mergedItems: 30, uniqueIds: [], total: 162_924_864, hasMore: true }, profile)).toBe("followers");
+    expect(classifySceneAggregate({ scene: "x", pages: 1, mergedItems: 30, uniqueIds: [], total: 81, hasMore: true }, profile)).toBe("following");
+    expect(classifySceneAggregate({ scene: "x", pages: 1, mergedItems: 31, uniqueIds: [], total: 32, hasMore: false }, profile)).toBe("friends");
+    expect(classifySceneAggregate({ scene: "x", pages: 1, mergedItems: 0, uniqueIds: [], total: null, hasMore: null }, profile)).toBe("unknown");
   });
 });

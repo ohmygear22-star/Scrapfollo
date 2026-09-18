@@ -143,6 +143,8 @@ export type TikTokBrowserEvidence = {
   listCaptures?: Array<{ url: string; status: number; textHead: string }>;
   followersAggregate?: SceneAggregate | null;
   followingAggregate?: SceneAggregate | null;
+  profileCounts?: ProfileCounts | null;
+  sceneReports?: Array<{ scene: string | null; kind: string; aggregate: SceneAggregate }>;
   finishedAt: string;
 };
 
@@ -260,27 +262,54 @@ export async function runTikTokBrowserProbe(
       const contextCookies = await context.cookies();
       evidence.sessionCookieAlive = contextCookies.some((c) => c.name === "sessionid");
 
-      // Open each modal, scroll it to trigger lazy pagination, close it.
-      const openAndScroll = async (hook: string): Promise<void> => {
-        const counter = page.locator(`[data-e2e="${hook}"]`).first();
-        if (!(await counter.count())) return;
-        await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
-        await page.waitForTimeout(3_500);
-        for (let i = 0; i < 4; i += 1) {
+      // Profile counts ground truth for scene classification.
+      const headerText = await page.evaluate(() => {
+        const headings = Array.from(document.querySelectorAll("h3,h2"));
+        const el = headings.find((h) => /following/i.test(h.textContent ?? "") && /followers/i.test(h.textContent ?? ""));
+        return el?.textContent ?? "";
+      });
+      const profileCounts = parseProfileCounts(headerText);
+      evidence.profileCounts = profileCounts;
+
+      // Open one modal, then switch tabs inside it. Centering the mouse
+      // before wheel matters: wheel events land at the cursor position, and
+      // after a counter click it hovers the header, not the modal list.
+      const openModal = async (): Promise<boolean> => {
+        for (const hook of ["followers-count", "following-count"]) {
+          const counter = page.locator(`[data-e2e="${hook}"]`).first();
+          if (!(await counter.count())) continue;
+          await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
+          await page.waitForTimeout(3_000);
+          const dialog = page.getByRole("dialog");
+          if (await dialog.count()) return true;
+        }
+        return false;
+      };
+      const clickTab = async (label: string): Promise<void> => {
+        const tab = page.getByRole("dialog").getByText(label, { exact: true }).first();
+        if (await tab.count()) {
+          await tab.click({ force: true, timeout: 4_000 }).catch(() => undefined);
+          await page.waitForTimeout(3_000);
+        }
+      };
+      const scrollModal = async (): Promise<void> => {
+        await page.mouse.move(720, 450).catch(() => undefined);
+        for (let i = 0; i < 5; i += 1) {
           await page.mouse.wheel(0, 1_500).catch(() => undefined);
           await page.waitForTimeout(1_500);
         }
+      };
+      if (await openModal()) {
+        for (const tabLabel of ["Followers", "Following", "Friends"]) {
+          const before = captured.length;
+          await clickTab(tabLabel);
+          await scrollModal();
+          if (captured.length === before && tabLabel !== "Friends") {
+            // tab may not exist; nothing captured — keep going
+          }
+        }
         await page.keyboard.press("Escape").catch(() => undefined);
         await page.waitForTimeout(1_000);
-      };
-      await openAndScroll("followers-count");
-      await openAndScroll("following-count");
-      // Retry round when either modal produced no userList data.
-      const sceneHasData = (scene: string) =>
-        captured.some((c) => c.url.includes(`scene=${scene}`) && c.text.includes("userList"));
-      if (!sceneHasData("67") || !sceneHasData("151")) {
-        await openAndScroll("following-count");
-        await openAndScroll("followers-count");
       }
 
       // Scene values are empirical: 67 = followers modal, 151 = following modal
@@ -299,8 +328,27 @@ export async function runTikTokBrowserProbe(
       if (followingCapture !== undefined) {
         evidence.following = summarizeListText(followingCapture.url, followingCapture.text);
       }
-      evidence.followersAggregate = aggregateSceneCaptures("67", captured);
-      evidence.followingAggregate = aggregateSceneCaptures("151", captured);
+      const sceneIds = Array.from(new Set(
+        captured
+          .map((c) => /scene=(\d+)/.exec(c.url)?.[1])
+          .filter((id): id is string => id !== undefined),
+      ));
+      evidence.sceneReports = [];
+      for (const sceneId of sceneIds) {
+        const aggregate = aggregateSceneCaptures(sceneId, captured);
+        if (aggregate === null || profileCounts === null) continue;
+        evidence.sceneReports.push({
+          scene: sceneId,
+          kind: classifySceneAggregate(aggregate, profileCounts),
+          aggregate,
+        });
+      }
+      const followersReport = evidence.sceneReports?.find((r) => r.kind === "followers");
+      const followersFallback = aggregateSceneCaptures("67", captured);
+      evidence.followersAggregate = followersReport !== undefined ? followersReport.aggregate : followersFallback;
+      const followingReport = evidence.sceneReports?.find((r) => r.kind === "following");
+      const followingFallback = aggregateSceneCaptures("151", captured);
+      evidence.followingAggregate = followingReport !== undefined ? followingReport.aggregate : followingFallback;
       evidence.listCaptures = captured.map((c) => ({
         url: maskSignedUrl(c.url),
         status: c.status,
@@ -393,4 +441,39 @@ export function aggregateSceneCaptures(
     total,
     hasMore,
   };
+}
+
+export type ProfileCounts = { following: number; followers: number };
+
+const COMPACT_MULTIPLIERS: Record<string, number> = { k: 1e3, m: 1e6, b: 1e9 };
+
+/** Parses "81 Following 162.9M Followers 2.7B Likes" style headers. */
+export function parseProfileCounts(text: string): ProfileCounts | null {
+  const followingMatch = /([\d.,]+)\s*([kmb]?)\s*following/i.exec(text);
+  const followersMatch = /([\d.,]+)\s*([kmb]?)\s*followers/i.exec(text);
+  if (followingMatch === null || followersMatch === null) return null;
+  const toNumber = (value: string, suffix: string): number => {
+    const base = Number.parseFloat(value.replace(/,/g, ""));
+    return Number.isFinite(base) ? base * (COMPACT_MULTIPLIERS[suffix.toLowerCase()] ?? 1) : Number.NaN;
+  };
+  const following = toNumber(followingMatch[1] ?? "", followingMatch[2] ?? "");
+  const followers = toNumber(followersMatch[1] ?? "", followersMatch[2] ?? "");
+  return Number.isFinite(following) && Number.isFinite(followers) ? { following, followers } : null;
+}
+
+/**
+ * Classifies a scene aggregate against the profile's own counts: followers
+ * lists carry a total near the profile follower count, following lists near
+ * the following count, and anything much smaller is the friends (mutual) tab.
+ */
+export function classifySceneAggregate(
+  aggregate: SceneAggregate,
+  profile: ProfileCounts,
+): "followers" | "following" | "friends" | "unknown" {
+  if (aggregate.total === null) return "unknown";
+  const within = (value: number, target: number) => Math.abs(value - target) <= Math.max(target * 0.02, 2);
+  if (within(aggregate.total, profile.followers)) return "followers";
+  if (within(aggregate.total, profile.following)) return "following";
+  if (aggregate.total < profile.following) return "friends";
+  return "unknown";
 }
