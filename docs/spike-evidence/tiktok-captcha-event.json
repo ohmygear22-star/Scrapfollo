@@ -1,0 +1,20 @@
+{
+  "task": "TikTok slider CAPTCHA event — probing halted",
+  "date": "2026-09-18 22:41 UTC",
+  "run": "iKGHuogmel0VVrP0r (build 0.29.2)",
+  "evidence": "dialogAria captured: 'Drag the slider to fit the puzzle' — TikTok challenged the actor browser context",
+  "trigger_analysis": "4-5 debug runs within ~3 hours on the same sticky session (sg-1) with heavy interaction (counter clicks, force-clicks, scrolling, tab switching). Same failure mode as the IG warning: debug bursts burn accounts.",
+  "rules_action": "CAPTCHA solving is forbidden (project red line) -> probe halted immediately, no bypass attempted",
+  "stable_achievements_before_halt": [
+    "friends list (scene=151, 31 accounts incl mrbeast/fifaworldcup) captured in 3 consecutive runs",
+    "profile counts live-parse (81 / 163M)",
+    "dialog structure mapped from owner browser: tabs are plain generic-text nodes ('Following 81' / 'Followers 163M' / 'Suggested'); followers-counter opens a dialog defaulting to the FOLLOWERS list"
+  ],
+  "production_discipline_derived": [
+    "1 browser session per day max (the designed cadence), never debug bursts",
+    "fresh sticky session per day; rotate sg-1 -> sg-2 when challenged",
+    "captcha response = skip the day, log, never solve",
+    "owner's own organic browser usage keeps the account healthy (their real device has never been challenged)"
+  ],
+  "next_work_offline": "TikTokSessionProvider package (TDD + contract suite, mock-based — zero live requests needed); Phase 4 persistence layer"
+}
