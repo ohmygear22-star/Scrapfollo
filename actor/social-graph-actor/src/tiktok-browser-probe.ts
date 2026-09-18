@@ -157,23 +157,6 @@ export async function runTikTokBrowserProbe(
   }
 
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({
-    // The apify playwright-CHROME image ships full Google Chrome; the channel
-    // bypasses playwright's version-specific browser registry entirely.
-    channel: "chrome",
-    // Headful under the image's xvfb: TikTok's app hydrates reliably there,
-    // while pure headless serves a skeleton shell (anti-bot behavior).
-    headless: false,
-    proxy: {
-      server: "http://proxy.apify.com:8000",
-      // Sticky session: one consistent datacenter IP. The rotating "auto"
-      // pool mixes clean and TikTok-flagged IPs — the observed run-to-run
-      // hydration variance tracked exactly with IP rotation.
-      username: process.env["TIKTOK_PROXY_SESSION"] ?? "auto,session-tiktok-1",
-      password: proxyPassword,
-    },
-    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
-  });
 
   const evidence: TikTokBrowserEvidence = {
     loginDetected: false,
@@ -189,156 +172,141 @@ export async function runTikTokBrowserProbe(
   const captured: Array<{ url: string; text: string; status: number }> = [];
   let listResponses = 0;
 
-  try {
-    const context = await browser.newContext({
-      // Stealth patches run before page scripts on every navigation.
-      // (addInitScript goes through the context, declared here first.)
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-      locale: "en-US",
-      timezoneId: "Asia/Singapore",
-      viewport: { width: 1440, height: 900 },
+  // Sticky sessions keep one IP per attempt; some datacenter IPs are
+  // TikTok-blocked, so bounded fallback rotates to a fresh sticky session.
+  const sessions = ["tiktok-1", "tiktok-2", "tiktok-3"];
+  let loaded = false;
+
+  for (const session of sessions) {
+    const browser = await chromium.launch({
+      // The apify playwright-CHROME image ships full Google Chrome; the channel
+      // bypasses playwright's version-specific browser registry entirely.
+      channel: "chrome",
+      // Headful under the image's xvfb: TikTok's app hydrates reliably there,
+      // while pure headless serves a skeleton shell (anti-bot behavior).
+      headless: false,
+      proxy: {
+        server: "http://proxy.apify.com:8000",
+        username: `auto,session-${session}`,
+        password: proxyPassword,
+      },
+      args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
     });
-    await context.addInitScript({ content: TIKTOK_STEALTH_INIT_SCRIPT });
-    await context.addCookies(cookies);
-    const page = await context.newPage();
+    try {
+      const context = await browser.newContext({
+        userAgent:
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        locale: "en-US",
+        timezoneId: "Asia/Singapore",
+        viewport: { width: 1440, height: 900 },
+      });
+      await context.addInitScript({ content: TIKTOK_STEALTH_INIT_SCRIPT });
+      await context.addCookies(cookies);
+      const page = await context.newPage();
+      page.on("response", async (response) => {
+        const url = response.url();
+        if (!/tiktok\.com\/api\//.test(url)) return;
+        if (evidence.apiUrls.length < 20) {
+          evidence.apiUrls.push(maskSignedUrl(url).slice(0, 200));
+        }
+        if (!/api\/user\/list/.test(url)) return;
+        listResponses += 1;
+        const text = await response.text().catch(() => "");
+        captured.push({ url, text: text.slice(0, 200_000), status: response.status() });
+      });
 
-    // Warm-up navigation: establishes session context before the profile.
-    await page.goto("https://www.tiktok.com/foryou", {
-      waitUntil: "domcontentloaded",
-      timeout: PROBE_TIMEOUT_MS,
-    }).catch(() => undefined);
-    await page.waitForTimeout(4_000);
-    page.on("response", async (response) => {
-      const url = response.url();
-      if (!/tiktok\.com\/api\//.test(url)) return;
-      if (evidence.apiUrls.length < 20) {
-        evidence.apiUrls.push(maskSignedUrl(url).slice(0, 200));
-      }
-      if (!/api\/user\/list/.test(url)) return;
-      listResponses += 1;
-      const text = await response.text().catch(() => "");
-      captured.push({ url, text: text.slice(0, 200_000), status: response.status() });
-    });
-
-    const gotoProfile = () => page.goto(`https://www.tiktok.com/@${target}`, {
-      waitUntil: "domcontentloaded",
-      timeout: PROBE_TIMEOUT_MS,
-    });
-    await gotoProfile();
-    const countersVisible = () => page
-      .locator('[data-e2e="followers-count"], [data-e2e="following-count"]')
-      .first()
-      .waitFor({ state: "visible", timeout: 20_000 })
-      .then(() => true, () => false);
-    if (!(await countersVisible())) {
-      // One retry: hydration sometimes needs a fresh load.
-      await page.reload({ waitUntil: "domcontentloaded", timeout: PROBE_TIMEOUT_MS }).catch(() => undefined);
-      await countersVisible().catch(() => false);
-    }
-    await page.waitForTimeout(2_000);
-    evidence.profileLoaded = true;
-
-    evidence.loginDetected = await page.evaluate(() =>
-      document.querySelector('[data-e2e="profile-icon"], [data-e2e="nav-upload"]') !== null);
-    evidence.cookieNamesAfterLoad = await page.evaluate(() =>
-      document.cookie.split(";")
-        .map((c) => (c.split("=")[0] ?? "").trim())
-        .filter((n) => n !== "")
-        .sort());
-    // Definitive session check: context cookies include httpOnly ones.
-    const contextCookies = await context.cookies();
-    evidence.sessionCookieAlive = contextCookies.some((c) => c.name === "sessionid");
-
-    const visitListPage = async (
-      listType: "followers" | "following",
-    ): Promise<void> => {
-      const before = captured.length;
-      await page.goto(`https://www.tiktok.com/@${target}/${listType}`, {
+      // Warm-up navigation: establishes session context before the profile.
+      await page.goto("https://www.tiktok.com/foryou", {
         waitUntil: "domcontentloaded",
         timeout: PROBE_TIMEOUT_MS,
+      }).catch(() => undefined);
+      await page.waitForTimeout(4_000);
+
+      await page.goto(`https://www.tiktok.com/@${target}`, {
+        waitUntil: "domcontentloaded",
+        timeout: PROBE_TIMEOUT_MS,
+      }).catch((error: unknown) => {
+        throw error;
       });
-      await page.waitForTimeout(6_000);
-      const fresh = captured.slice(before);
-      const match = fresh.find((c) => /userList|userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
-      if (match !== undefined) {
-        const summary = summarizeListText(match.url, match.text);
-        if (listType === "followers") {
-          evidence.followers = summary;
-        } else {
-          evidence.following = summary;
+      const countersVisible = () => page
+        .locator('[data-e2e="followers-count"], [data-e2e="following-count"]')
+        .first()
+        .waitFor({ state: "visible", timeout: 20_000 })
+        .then(() => true, () => false);
+      if (!(await countersVisible())) {
+        await page.reload({ waitUntil: "domcontentloaded", timeout: PROBE_TIMEOUT_MS }).catch(() => undefined);
+        await countersVisible().catch(() => false);
+      }
+      await page.waitForTimeout(2_000);
+      evidence.profileLoaded = true;
+
+      evidence.loginDetected = await page.evaluate(() =>
+        document.querySelector('[data-e2e="profile-icon"], [data-e2e="nav-upload"]') !== null);
+      evidence.cookieNamesAfterLoad = await page.evaluate(() =>
+        document.cookie.split(";")
+          .map((c) => (c.split("=")[0] ?? "").trim())
+          .filter((n) => n !== "")
+          .sort());
+      const contextCookies = await context.cookies();
+      evidence.sessionCookieAlive = contextCookies.some((c) => c.name === "sessionid");
+
+      // Open both list modals via the counter hooks.
+      for (const hook of ["followers-count", "following-count"]) {
+        const counter = page.locator(`[data-e2e="${hook}"]`).first();
+        if (await counter.count()) {
+          await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
+          await page.waitForTimeout(5_000);
+          await page.keyboard.press("Escape").catch(() => undefined);
+          await page.waitForTimeout(1_000);
         }
       }
-    };
 
-    // Try the modal path first: TikTok exposes data-e2e hooks on the counters.
-    await page.goto(`https://www.tiktok.com/@${target}`, {
-      waitUntil: "domcontentloaded",
-      timeout: PROBE_TIMEOUT_MS,
-    });
-    await page.waitForTimeout(4_000);
-    // The app's modal calls use scene= params (no listType), so associate
-    // responses with the click that triggered them by timing window.
-    for (const hook of ["followers-count", "following-count"]) {
-      const counter = page.locator(`[data-e2e="${hook}"]`).first();
-      if (await counter.count()) {
-        const before = captured.length;
-        await counter.click({ force: true, timeout: 5_000 }).catch(() => undefined);
-        await page.waitForTimeout(5_000);
-        const fresh = captured.slice(before);
-        const match = fresh.find((c) => /userList|userInfoList|"users"/.test(c.text)) ?? fresh.at(-1);
-        if (match !== undefined) {
-          const summary = summarizeListText(match.url, match.text);
-          if (hook === "followers-count") {
-            evidence.followers = summary;
-          } else {
-            evidence.following = summary;
-          }
-        }
-        await page.keyboard.press("Escape").catch(() => undefined);
-        await page.waitForTimeout(1_000);
+      // Scene values are empirical: 67 = followers modal, 151 = following modal
+      // (the data-e2e hook labels do not match the modals they open).
+      const byScene = (scene: string) =>
+        captured
+          .filter((c) => c.url.includes(`scene=${scene}`))
+          .sort((a, b) => b.text.length - a.text.length)
+          .find((c) => c.text.includes("userList"))
+          ?? captured.filter((c) => c.url.includes(`scene=${scene}`)).at(-1);
+      const followersCapture = byScene("67");
+      if (followersCapture !== undefined) {
+        evidence.followers = summarizeListText(followersCapture.url, followersCapture.text);
       }
+      const followingCapture = byScene("151");
+      if (followingCapture !== undefined) {
+        evidence.following = summarizeListText(followingCapture.url, followingCapture.text);
+      }
+      evidence.listCaptures = captured.map((c) => ({
+        url: maskSignedUrl(c.url),
+        status: c.status,
+        textHead: c.text.slice(0, 300),
+      }));
+      const shot = await page.screenshot({ fullPage: false }).catch(() => null);
+      if (shot !== null) {
+        await keyValueStore.setValue("TIKTOK_SCREENSHOT", shot);
+      }
+      loaded = true;
+      break;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (sessions.at(-1) === session || !/ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_CONNECTION|net::/.test(message)) {
+        throw error;
+      }
+      // This sticky IP is TikTok-blocked; fall through to the next session.
+    } finally {
+      await browser.close().catch(() => undefined);
     }
-
-    if (evidence.followers === null && evidence.following === null) {
-      await visitListPage("following");
-      await visitListPage("followers");
-    }
-    // Scene values are empirical: 67 = followers modal, 151 = following modal
-    // (the data-e2e hook labels do not match the modals they open).
-    const byScene = (scene: string) =>
-      captured
-        .filter((c) => c.url.includes(`scene=${scene}`))
-        .sort((a, b) => b.text.length - a.text.length)
-        .find((c) => c.text.includes("userList"))
-        ?? captured.filter((c) => c.url.includes(`scene=${scene}`)).at(-1);
-    const followersCapture = byScene("67");
-    if (followersCapture !== undefined) {
-      evidence.followers = summarizeListText(followersCapture.url, followersCapture.text);
-    }
-    const followingCapture = byScene("151");
-    if (followingCapture !== undefined) {
-      evidence.following = summarizeListText(followingCapture.url, followingCapture.text);
-    }
-    evidence.listCaptures = captured.map((c) => ({
-      url: maskSignedUrl(c.url),
-      status: c.status,
-      textHead: c.text.slice(0, 300),
-    }));
-    const shot = await page.screenshot({ fullPage: false }).catch(() => null);
-    if (shot !== null) {
-      await keyValueStore.setValue("TIKTOK_SCREENSHOT", shot);
-    }
-
-  } finally {
-    await browser.close().catch(() => undefined);
+  }
+  if (!loaded) {
+    throw new Error("tiktok browser probe exhausted sticky sessions without loading the profile");
   }
 
   await keyValueStore.setValue("TIKTOK_BROWSER_EVIDENCE", evidence);
 
   const final = !evidence.profileLoaded
     ? "PROFILE_FAILED"
-    : !evidence.loginDetected
+    : !evidence.sessionCookieAlive
       ? "SESSION_REJECTED"
       : evidence.followers !== null && evidence.followers.itemCount > 0
         ? "LIST_DATA_CAPTURED"
