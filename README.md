@@ -12,6 +12,8 @@ or production consumer integration is included.
 packages/social-graph-core   consumer-neutral core: contracts, streaming,
                              pagination, deduplication, retry, cancellation,
                              completeness, orchestration, metrics
+providers/tiktok-session      TikTok owned-session provider (browser-session seam;
+                            following identities via the app's own signed calls)
 providers/instagram-session  Instagram owned-session provider (following identities
                             + follower/following counts; follower identities intentionally
                             unsupported — see docs/spike-evidence/)

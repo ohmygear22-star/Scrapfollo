@@ -13,6 +13,9 @@ export default defineConfig({
       "@social-graph/instagram-session-provider": fileURLToPath(
         new URL("./providers/instagram-session/src/index.ts", import.meta.url),
       ),
+      "@social-graph/tiktok-session-provider": fileURLToPath(
+        new URL("./providers/tiktok-session/src/index.ts", import.meta.url),
+      ),
     },
   },
 });
