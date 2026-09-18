@@ -215,7 +215,7 @@ export async function runTikTokBrowserProbe(
       if (!/api\/user\/list/.test(url)) return;
       listResponses += 1;
       const text = await response.text().catch(() => "");
-      captured.push({ url, text: text.slice(0, 1_500), status: response.status() });
+      captured.push({ url, text: text.slice(0, 200_000), status: response.status() });
     });
 
     const gotoProfile = () => page.goto(`https://www.tiktok.com/@${target}`, {
@@ -301,16 +301,26 @@ export async function runTikTokBrowserProbe(
       await visitListPage("following");
       await visitListPage("followers");
     }
-    // Scene-based classification: the followers modal issues scene=67.
-    for (const summary of [evidence.followers, evidence.following]) {
-      if (summary !== null && summary.scene === "67" && summary !== evidence.followers) {
-        evidence.followers = summary;
-      }
+    // Scene values are empirical: 67 = followers modal, 151 = following modal
+    // (the data-e2e hook labels do not match the modals they open).
+    const byScene = (scene: string) =>
+      captured
+        .filter((c) => c.url.includes(`scene=${scene}`))
+        .sort((a, b) => b.text.length - a.text.length)
+        .find((c) => c.text.includes("userList"))
+        ?? captured.filter((c) => c.url.includes(`scene=${scene}`)).at(-1);
+    const followersCapture = byScene("67");
+    if (followersCapture !== undefined) {
+      evidence.followers = summarizeListText(followersCapture.url, followersCapture.text);
+    }
+    const followingCapture = byScene("151");
+    if (followingCapture !== undefined) {
+      evidence.following = summarizeListText(followingCapture.url, followingCapture.text);
     }
     evidence.listCaptures = captured.map((c) => ({
       url: maskSignedUrl(c.url),
       status: c.status,
-      textHead: c.text.slice(0, 400),
+      textHead: c.text.slice(0, 300),
     }));
     const shot = await page.screenshot({ fullPage: false }).catch(() => null);
     if (shot !== null) {
