@@ -1,0 +1,38 @@
+{
+  "task": "TikTok stealth + session stabilization — BREAKTHROUGH",
+  "date": "2026-09-18",
+  "head": "0f3455c (actor 0.26.1)",
+  "winning_configuration": {
+    "proxy": "auto-country-sg-session-tiktok-1 (Singapore sticky datacenter session; US pool fully TikTok-flagged — 5+ consecutive HTTP failures)",
+    "fallback_ladder": "sg-2 sticky -> direct runner IP (implemented, untested — sg-1 worked first try)",
+    "stealth": "TIKTOK_STEALTH_INIT_SCRIPT (webdriver/chrome.runtime/plugins/permissions/WebGL) via context.addInitScript",
+    "mode": "headful Chrome under xvfb, channel:chrome",
+    "warmup": "foryou goto + 4s before profile; element-based counter wait + one reload retry"
+  },
+  "result": {
+    "run": "h6nTWdF7vtRj8EaYF",
+    "sessionCookieAlive": true,
+    "following_captured": {
+      "scene": "151",
+      "total": 32,
+      "items_parsed": 31,
+      "hasMore": false,
+      "samples": ["lamine.yamal (Lamine Yamal)", "williamlast_krm (William Last KRM)", "thestanlley1"],
+      "note": "items carry uniqueId + nickname; count discrepancy vs profile's 81 following to investigate (modal may paginate at 30/request or this was a partial)"
+    },
+    "followers": "null this run (scene=67 click or response missed — next fix)"
+  },
+  "key_fixes_this_session": [
+    "body truncation broke JSON.parse -> capture full bodies (bounded 200KB)",
+    "scene-based classification (67=followers modal, 151=following modal) — data-e2e hook labels are swapped/misleading",
+    "country-pinned sticky sessions beat rotating auto pool",
+    "stealth init script + headful + warmup + element waits"
+  ],
+  "runs_today": 4,
+  "remaining": [
+    "followers (scene=67) capture reliability",
+    "list semantics check (31 vs 81 — modal pagination via scroll)",
+    "2-3 more runs to measure stability rate",
+    "then TikTokSessionProvider package (TDD + contract suite)"
+  ]
+}
