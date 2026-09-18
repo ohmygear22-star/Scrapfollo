@@ -172,12 +172,16 @@ export async function runTikTokBrowserProbe(
   const captured: Array<{ url: string; text: string; status: number }> = [];
   let listResponses = 0;
 
-  // Sticky sessions keep one IP per attempt; some datacenter IPs are
-  // TikTok-blocked, so bounded fallback rotates to a fresh sticky session.
-  const sessions = ["tiktok-1", "tiktok-2", "tiktok-3"];
+  // Sticky Singapore datacenter sessions first (TikTok home region; the US
+  // pool is heavily flagged), then one direct attempt from the runner IP.
+  const attempts: Array<{ label: string; proxyUser: string | undefined }> = [
+    { label: "sg-1", proxyUser: "auto-country-sg-session-tiktok-1" },
+    { label: "sg-2", proxyUser: "auto-country-sg-session-tiktok-2" },
+    { label: "direct", proxyUser: undefined },
+  ];
   let loaded = false;
 
-  for (const session of sessions) {
+  for (const attempt of attempts) {
     const browser = await chromium.launch({
       // The apify playwright-CHROME image ships full Google Chrome; the channel
       // bypasses playwright's version-specific browser registry entirely.
@@ -185,11 +189,15 @@ export async function runTikTokBrowserProbe(
       // Headful under the image's xvfb: TikTok's app hydrates reliably there,
       // while pure headless serves a skeleton shell (anti-bot behavior).
       headless: false,
-      proxy: {
-        server: "http://proxy.apify.com:8000",
-        username: `auto,session-${session}`,
-        password: proxyPassword,
-      },
+      ...(attempt.proxyUser === undefined
+        ? {}
+        : {
+            proxy: {
+              server: "http://proxy.apify.com:8000",
+              username: attempt.proxyUser,
+              password: proxyPassword,
+            },
+          }),
       args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
     });
     try {
@@ -290,10 +298,11 @@ export async function runTikTokBrowserProbe(
       break;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (sessions.at(-1) === session || !/ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_CONNECTION|net::/.test(message)) {
+      if (attempts.at(-1)?.label === attempt.label
+        || !/ERR_HTTP_RESPONSE_CODE_FAILURE|ERR_CONNECTION|net::/.test(message)) {
         throw error;
       }
-      // This sticky IP is TikTok-blocked; fall through to the next session.
+      // This exit IP is TikTok-blocked; fall through to the next attempt.
     } finally {
       await browser.close().catch(() => undefined);
     }
