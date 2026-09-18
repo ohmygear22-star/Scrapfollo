@@ -1,0 +1,20 @@
+{
+  "task": "TikTok final stabilization round (modal tabs + pagination)",
+  "date": "2026-09-18 (evening)",
+  "head": "a46d315 (actor 0.27.1)",
+  "run_lHBUo3Sxwa7Qqidnp": {
+    "followingAggregate_scene151": {
+      "items": 31, "total": 32, "hasMore": false, "pages": 1,
+      "samples": ["lamine.yamal", "williamlast_krm", "thestanlley1", "mrbeast", "fifaworldcup"],
+      "interpretation": "REAL following-domain accounts (mrbeast/FIFA plausible for khaby) BUT total=32 vs profile's 81 Following -> scene=151 is likely the FRIENDS tab (mutual follows), not the full following list. The modal has Friends/Following tabs; the full 81 needs a tab click inside the modal."
+    },
+    "followersAggregate_scene67": "null — no data this run despite retry round (variance continues)"
+  },
+  "next_iteration_plan": [
+    "inside the opened modal: click the 'Following' tab (role=tab name regex) to switch from Friends to the full list; capture whatever scene fires",
+    "classify scenes by TOTAL magnitude, not by hardcoded ids (81=following, 162.9M=followers, 32=friends)",
+    "scroll container may need element-targeted wheel (modal element box) — page-level wheel produced no extra pages",
+    "2-3 stability runs after that; then TikTokSessionProvider package"
+  ],
+  "scene_knowledge": { "67": "followers modal (observed with hasMore:true total~162.9M once)", "151": "friends-or-following modal (total=32 = friends hypothesis)", "21": "suggested accounts (empty-ish)" }
+}
