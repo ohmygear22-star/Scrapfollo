@@ -6,3 +6,13 @@ export type {
   MembershipDiff,
   RelationshipDirection,
 } from "./diff.js";
+export { advisoryLockKey, StarpulseScanAdapter } from "./adapter.js";
+export type {
+  AdapterIds,
+  CollectionSummary,
+  PgLockConnectionFactory,
+  PgQueryClient,
+  ScanOutcome,
+  ScanRequest,
+  StagingRowInput,
+} from "./adapter.js";
