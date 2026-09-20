@@ -284,7 +284,8 @@ export class StarpulseScanAdapter {
       });
       await this.#pool.query("COMMIT");
       return { status, runId, snapshotId, changes };
-    } catch {
+    } catch (error) {
+      console.error("[persistence] promotion failed:", error instanceof Error ? error.message : error);
       await this.#pool.query("ROLLBACK").catch(() => undefined);
       await this.#finalizeRun(runId, "FAILED", { errorCategory: "UNKNOWN_ERROR" });
       return { status: "FAILED", runId, snapshotId: null, changes: 0 };
