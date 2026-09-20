@@ -65,14 +65,10 @@ describe.skipIf(!enabled)("persistence integration (real PostgreSQL)", () => {
       "utf8",
     );
     await pool.query(migration);
-    await pool.query(
-      `INSERT INTO targets (id, platform, platform_username, status, created_at, updated_at)
-       VALUES ($1, 'instagram', 'idol', 'ACTIVE', now(), now())`,
-      [request.targetId],
-    );
+    await resetTables();
   });
 
-  afterEach(async () => {
+  async function resetTables(): Promise<void> {
     await pool.query(`TRUNCATE relationship_changes, snapshot_edges, snapshots,
       relationship_edges, staging_relationships, scrape_runs, social_profiles, targets CASCADE`);
     await pool.query(
@@ -80,6 +76,10 @@ describe.skipIf(!enabled)("persistence integration (real PostgreSQL)", () => {
        VALUES ($1, 'instagram', 'idol', 'ACTIVE', now(), now())`,
       [request.targetId],
     );
+  }
+
+  afterEach(async () => {
+    await resetTables();
   });
 
   afterAll(async () => {
