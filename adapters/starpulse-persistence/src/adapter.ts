@@ -128,7 +128,8 @@ export class StarpulseScanAdapter {
           }
         });
         await flush();
-      } catch {
+      } catch (error) {
+        console.error("[persistence] collection failed:", error instanceof Error ? error.message : error);
         await this.#finalizeRun(runId, "FAILED", { errorCategory: "UNKNOWN_ERROR" });
         return { status: "FAILED", runId, snapshotId: null, changes: 0 };
       }
@@ -146,10 +147,11 @@ export class StarpulseScanAdapter {
   async #insertStaging(runId: string, rows: StagingRowInput[], platform: string): Promise<void> {
     const values: unknown[] = [];
     const tuples: string[] = [];
+    const scrapedAt = this.#ids.now();
     rows.forEach((row, index) => {
-      const base = index * 11;
+      const base = index * 12;
       tuples.push(
-        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11})`,
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12})`,
       );
       values.push(
         runId,
@@ -163,6 +165,7 @@ export class StarpulseScanAdapter {
         row.isVerified ?? null,
         row.profilePicUrl ?? null,
         index,
+        scrapedAt,
       );
     });
     void platform;
